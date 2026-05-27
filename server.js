@@ -132,6 +132,8 @@ async function initDB(){
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
 function parseEDI(text){
+  // Normalize line endings
+  text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const pedidos = [];
   const blocks = text.split(/(?=LEROY MERLIN)/g).filter(b=>b.includes('PEDIDO N '));
 
