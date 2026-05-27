@@ -333,8 +333,14 @@ app.get('/api/bc/items/:ref', async (req, res) => {
 app.post('/api/bc/crear-pedido', async (req, res) => {
   const { pedido } = req.body;
   try {
-    const comp = (await pool.query('SELECT company_id FROM bc_company_cache LIMIT 1')).rows[0];
-    if(!comp) return res.status(400).json({error:'Ejecuta primero /api/bc/company'});
+    // Get company — from cache or fetch from BC
+    let comp = (await pool.query('SELECT company_id FROM bc_company_cache LIMIT 1')).rows[0];
+    if(!comp){
+      const data = await bcGet(`/v2.0/${BC_TENANT}/production/api/v2.0/companies`);
+      const company = data.value.find(c=>c.name.includes('ARISAC'))||data.value[0];
+      await pool.query('INSERT INTO bc_company_cache(company_id,company_name) VALUES($1,$2) ON CONFLICT DO NOTHING',[company.id,company.name]);
+      comp = {company_id: company.id};
+    }
 
     const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${comp.company_id})`;
 
