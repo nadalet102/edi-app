@@ -201,7 +201,10 @@ app.post('/api/edi/parse', async (req, res) => {
   try {
     const { texto } = req.body;
     if(!texto) return res.status(400).json({error:'No se recibió texto'});
+    console.log('EDI texto length:', texto.length);
+    console.log('EDI primeros 200:', JSON.stringify(texto.substring(0,200)));
     const pedidos = parseEDI(texto);
+    console.log('Pedidos encontrados:', pedidos.length);
     if(!pedidos.length) return res.status(400).json({error:'No se encontraron pedidos en el texto'});
 
     // Check mapeos for each ref
