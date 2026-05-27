@@ -18,6 +18,10 @@ const pool = new Pool({
 const BC_TENANT  = process.env.BC_TENANT_ID;
 const BC_CLIENT  = process.env.BC_CLIENT_ID;
 const BC_SECRET  = process.env.BC_SECRET;
+
+console.log('BC_TENANT:', BC_TENANT);
+console.log('BC_CLIENT:', BC_CLIENT);
+console.log('BC_SECRET length:', BC_SECRET?.length);
 const BC_COMPANY_ID = process.env.BC_COMPANY_ID || ''; // filled after first call
 let bcToken = null, bcTokenExp = 0;
 
