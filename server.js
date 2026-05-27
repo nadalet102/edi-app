@@ -161,23 +161,29 @@ function parseEDI(text){
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
 
-    // Lineas: REF  DESCRIPCION  CANTIDAD  PRECIO  REF_LM(8 digitos)
+    // Lineas: parsear por columnas — último token es REF_LM (8 dígitos)
     const lineas = [];
-    const linePattern = /^(\S+)\s+(.+?)\s+([\d\.]+)\s+([\d\.]+)\*?(\d{8})\s*$/gm;
-    let lm;
-    while((lm = linePattern.exec(block)) !== null){
-      const ref = lm[1].trim();
-      if(['REF','EAN','LEROY','PEDIDO','TOTAL','HORARIO','FIN'].includes(ref)) continue;
-      if(ref.length < 3 || ref.length > 15) continue;
-      if(!ref.match(/^[A-Z0-9][A-Z0-9\-]*$/)) continue;
-      lineas.push({
-        ref_edi: ref,
-        descripcion: lm[2].trim(),
-        cantidad: parseFloat(lm[3]),
-        precio_unidad: parseFloat(lm[4]),
-        ref_lm: lm[5].trim()
-      });
-    }
+    const SKIP = new Set(['REF','EAN','LEROY','PEDIDO','TOTAL','HORARIO','FIN','ENTREGUE','ADRESSE','ALMACEN','POLÍGONO','DIRECCION']);
+    block.split('\n').forEach(rawLine => {
+      const line = rawLine.replace(/\r/g,'').trimEnd();
+      // Must start with a valid ref: alphanumeric, no leading spaces
+      if(!line.match(/^[A-Z0-9][A-Z0-9\-]{2,14}\s/)) return;
+      const parts = line.trim().split(/\s+/).filter(Boolean);
+      if(parts.length < 4) return;
+      const ref = parts[0];
+      if(SKIP.has(ref)) return;
+      // Last part must be 8-digit REF_LM
+      const lastRaw = parts[parts.length-1];
+      const refLm = lastRaw.replace(/\*/g,'').replace(/[^0-9]/g,'').slice(0,8);
+      if(refLm.length !== 8) return;
+      // Second to last is precio, third to last is cantidad
+      const precio = parseFloat(parts[parts.length-2].replace(',','.'));
+      const cantidad = parseFloat(parts[parts.length-3].replace(',','.'));
+      if(isNaN(cantidad)||isNaN(precio)) return;
+      // Everything between ref and cantidad is description
+      const descripcion = parts.slice(1, parts.length-3).join(' ');
+      lineas.push({ ref_edi:ref, descripcion, cantidad, precio_unidad:precio, ref_lm:refLm });
+    });
 
     if(lineas.length > 0){
       pedidos.push({ num_pedido, nombre_tienda, ean_tienda, codigo_tienda, cliente_bc, fecha_entrega, total_eur, lineas });
