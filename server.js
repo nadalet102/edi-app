@@ -135,7 +135,35 @@ function parseEDI(text){
   // Normalize — handles real newlines, Windows \r\n, and literal \n strings
   text = text.replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const pedidos = [];
-  const blocks = text.split(/(?=LEROY MERLIN)/g).filter(b=>b.includes('PEDIDO N '));
+  // Split by pedido blocks using FIN PEDIDO or the LEROY MERLIN + PEDIDO header pattern
+  // We can't split on LEROY MERLIN alone because it appears in billing address too
+  // Instead split on the pattern: line starting with LEROY MERLIN followed by PEDIDO XXXXXX
+  const blocks = [];
+  const lines = text.split('\n');
+  let currentBlock = [];
+  let inBlock = false;
+
+  for(const line of lines){
+    // New pedido starts with "LEROY MERLIN" at start of line AND contains "PEDIDO \d+"
+    if(line.match(/^LEROY MERLIN\S*\s+.*PEDIDO\s+\d+/)){
+      if(inBlock && currentBlock.length > 0){
+        blocks.push(currentBlock.join('\n'));
+      }
+      currentBlock = [line];
+      inBlock = true;
+    } else if(inBlock){
+      currentBlock.push(line);
+      // End of block
+      if(line.match(/^-{20,}/) || line.match(/^\*END\*/)){
+        blocks.push(currentBlock.join('\n'));
+        currentBlock = [];
+        inBlock = false;
+      }
+    }
+  }
+  if(inBlock && currentBlock.length > 0) blocks.push(currentBlock.join('\n'));
+
+  console.log('Blocks found after fix:', blocks.length);
 
   for(const block of blocks){
     const numMatch = block.match(/PEDIDO N\s+(\d+)/);
