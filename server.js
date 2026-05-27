@@ -132,8 +132,8 @@ async function initDB(){
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
 function parseEDI(text){
-  // Normalize line endings
-  text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  // Normalize line endings — handles real newlines and literal \n
+  text = text.replace(/\\n/g,'\n').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const pedidos = [];
   const blocks = text.split(/(?=LEROY MERLIN)/g).filter(b=>b.includes('PEDIDO N '));
 
@@ -163,29 +163,40 @@ function parseEDI(text){
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
 
-    // Lineas: parsear por columnas — último token es REF_LM (8 dígitos)
+    // Lineas: solo procesar las que están después de la cabecera REF F.-EAN
     const lineas = [];
-    const SKIP = new Set(['REF','EAN','LEROY','PEDIDO','TOTAL','HORARIO','FIN','ENTREGUE','ADRESSE','ALMACEN','POLÍGONO','DIRECCION']);
-    block.split('\n').forEach(rawLine => {
+    const lines = block.split('\n');
+    let enSeccionLineas = false;
+    for(const rawLine of lines){
       const line = rawLine.replace(/\r/g,'').trimEnd();
-      // Must start with a valid ref: alphanumeric, no leading spaces
-      if(!line.match(/^[A-Z0-9][A-Z0-9\-]{2,14}\s/)) return;
+      // Detectar inicio de sección de productos
+      if(line.match(/^REF\s+F/i) || line.match(/^REF\s+DESIGNACION/i)) {
+        enSeccionLineas = true;
+        continue;
+      }
+      // Detectar fin de sección
+      if(line.match(/TOTAL GENERAL/i) || line.match(/^-{10,}/) || line.match(/^FIN PEDIDO/i)) {
+        enSeccionLineas = false;
+        continue;
+      }
+      if(!enSeccionLineas) continue;
+      if(!line.trim()) continue;
+      
       const parts = line.trim().split(/\s+/).filter(Boolean);
-      if(parts.length < 4) return;
+      if(parts.length < 4) continue;
       const ref = parts[0];
-      if(SKIP.has(ref)) return;
+      // Skip if not a valid product ref
+      if(!ref.match(/^[A-Z0-9][A-Z0-9\-]*$/) || ref.length < 3) continue;
       // Last part must be 8-digit REF_LM
       const lastRaw = parts[parts.length-1];
       const refLm = lastRaw.replace(/\*/g,'').replace(/[^0-9]/g,'').slice(0,8);
-      if(refLm.length !== 8) return;
-      // Second to last is precio, third to last is cantidad
+      if(refLm.length !== 8) continue;
       const precio = parseFloat(parts[parts.length-2].replace(',','.'));
       const cantidad = parseFloat(parts[parts.length-3].replace(',','.'));
-      if(isNaN(cantidad)||isNaN(precio)) return;
-      // Everything between ref and cantidad is description
+      if(isNaN(cantidad)||isNaN(precio)) continue;
       const descripcion = parts.slice(1, parts.length-3).join(' ');
       lineas.push({ ref_edi:ref, descripcion, cantidad, precio_unidad:precio, ref_lm:refLm });
-    });
+    }
 
     if(lineas.length > 0){
       pedidos.push({ num_pedido, nombre_tienda, ean_tienda, codigo_tienda, cliente_bc, fecha_entrega, total_eur, lineas });
