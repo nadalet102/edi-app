@@ -161,19 +161,20 @@ function parseEDI(text){
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
 
-    // Lineas — captura REF  DESC  CANT  PRECIO  REF_LM
-    // Permite * pegado al REF_LM (ej: 0.71*81875883)
+    // Lineas: REF  DESCRIPCION  CANTIDAD  PRECIO  REF_LM(8 digitos)
     const lineas = [];
-    const linePattern = /^([A-Z0-9\-]{3,15})\s{2,}(.+?)\s{2,}([\d,\.]+)\s+([\d,\.]+)\*?(\d{8})\s*$/gm;
+    const linePattern = /^(\S+)\s+(.+?)\s+([\d\.]+)\s+([\d\.]+)\*?(\d{8})\s*$/gm;
     let lm;
     while((lm = linePattern.exec(block)) !== null){
       const ref = lm[1].trim();
-      if(['REF','EAN','LEROY','PEDIDO','TOTAL'].includes(ref)) continue;
+      if(['REF','EAN','LEROY','PEDIDO','TOTAL','HORARIO','FIN'].includes(ref)) continue;
+      if(ref.length < 3 || ref.length > 15) continue;
+      if(!ref.match(/^[A-Z0-9][A-Z0-9\-]*$/)) continue;
       lineas.push({
         ref_edi: ref,
         descripcion: lm[2].trim(),
-        cantidad: parseFloat(lm[3].replace(',','.')),
-        precio_unidad: parseFloat(lm[4].replace(',','.')),
+        cantidad: parseFloat(lm[3]),
+        precio_unidad: parseFloat(lm[4]),
         ref_lm: lm[5].trim()
       });
     }
