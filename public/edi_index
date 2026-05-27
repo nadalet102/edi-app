@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EDI Leroy Merlin → BC</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#185FA5;--blue-d:#0d4f7a;--blue-l:#E6F1FB;
+  --green:#2d7a3a;--green-l:#e6f5ea;
+  --red:#b91c1c;--red-l:#fef2f2;
+  --amber:#b45309;--amber-l:#fffbeb;
+  --text:#1a1a2e;--text2:#6b7280;--text3:#9ca3af;
+  --surface:#fff;--surface2:#f8fafc;
+  --border:#e5e7eb;--border2:#d1d5db;
+  --radius:10px;--radius-sm:6px;
+}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#f1f5f9;color:var(--text);font-size:14px;min-height:100vh}
+/* TOP BAR */
+.topbar{background:var(--blue-d);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.topbar-title span{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:8px;font-size:11px;font-weight:500}
+/* TABS */
+.tabs{background:#fff;border-bottom:1px solid var(--border);display:flex;gap:0;padding:0 20px;position:sticky;top:52px;z-index:99}
+.tab{padding:12px 16px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px;transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue-d);border-bottom-color:var(--blue-d)}
+/* VIEWS */
+.view{display:none;padding:20px;max-width:1000px;margin:0 auto}
+.view.active{display:block}
+/* CARD */
+.card{background:#fff;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:14px}
+.card-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-weight:600;font-size:14px;display:flex;align-items:center;gap:7px}
+/* TEXTAREA */
+textarea{width:100%;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;font-family:monospace;resize:vertical;background:var(--surface2);color:var(--text);outline:none}
+textarea:focus{border-color:var(--blue)}
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:.15s}
+.btn-primary{background:var(--blue-d);color:#fff}.btn-primary:hover{background:var(--blue)}
+.btn-outline{background:#fff;border:1px solid var(--border2);color:var(--text)}.btn-outline:hover{border-color:var(--blue);color:var(--blue)}
+.btn-green{background:var(--green);color:#fff}
+.btn-red{background:var(--red);color:#fff}
+.btn-sm{padding:4px 10px;font-size:12px}
+/* PEDIDO CARD */
+.pedido-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
+.pedido-hdr{padding:12px 14px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pedido-num{font-weight:700;font-family:monospace;color:var(--blue-d);font-size:15px}
+.pedido-info{font-size:12px;color:var(--text2)}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-green{background:var(--green-l);color:var(--green)}
+.badge-amber{background:var(--amber-l);color:var(--amber)}
+.badge-red{background:var(--red-l);color:var(--red)}
+.badge-blue{background:var(--blue-l);color:var(--blue-d)}
+/* LINEAS TABLE */
+.lineas-table{width:100%;border-collapse:collapse;font-size:12px}
+.lineas-table th{padding:7px 12px;text-align:left;background:var(--surface2);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text2)}
+.lineas-table td{padding:8px 12px;border-bottom:1px solid var(--border)}
+.lineas-table tr:last-child td{border-bottom:none}
+.ref-edi{font-family:monospace;font-weight:600;color:var(--blue-d)}
+.ref-bc{font-family:monospace;color:var(--green);font-weight:600}
+/* MAP INPUT */
+.map-input{font-size:12px;padding:4px 8px;border:1px solid var(--border2);border-radius:4px;background:#fff;color:var(--text);font-family:monospace;width:120px}
+.map-input:focus{outline:none;border-color:var(--blue)}
+/* STATUS BAR */
+.statusbar{position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#cbd5e1;padding:6px 16px;font-size:11px;display:flex;align-items:center;gap:8px;z-index:200}
+/* FIELD */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:4px}
+.field input,.field select{width:100%;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;background:var(--surface2);color:var(--text);outline:none}
+.field input:focus,.field select:focus{border-color:var(--blue)}
+/* EMPTY */
+.empty{text-align:center;padding:40px;color:var(--text2)}
+.empty i{font-size:32px;opacity:.3;display:block;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-title">
+    <i class="ti ti-file-import"></i> EDI Leroy Merlin
+    <span>→ Business Central</span>
+  </div>
+  <div style="font-size:11px;color:rgba(255,255,255,.6)" id="bc-status">Conectando BC...</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" id="tab-import" onclick="switchTab('import')"><i class="ti ti-upload"></i> Importar EDI</div>
+  <div class="tab" id="tab-mapeos" onclick="switchTab('mapeos')"><i class="ti ti-arrows-exchange"></i> Mapeos</div>
+  <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial</div>
+</div>
+
+<!-- IMPORTAR -->
+<div class="view active" id="view-import">
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-clipboard-text"></i> Pega el texto del EDI de Leroy Merlin</div>
+    </div>
+    <div style="padding:14px 16px">
+      <textarea id="edi-texto" rows="10" placeholder="Pega aquí el contenido del email EDI de Leroy Merlin..."></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+        <button class="btn btn-primary" onclick="parsearEDI()"><i class="ti ti-search"></i> Analizar pedidos</button>
+        <button class="btn btn-outline" onclick="document.getElementById('edi-texto').value=''">Limpiar</button>
+        <span id="parse-info" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+    </div>
+  </div>
+  <div id="pedidos-preview"></div>
+</div>
+
+<!-- MAPEOS -->
+<div class="view" id="view-mapeos">
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-arrows-exchange"></i> Referencias mapeadas</div>
+    </div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Añade manualmente una equivalencia entre la referencia del EDI y el código de artículo en BC</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" id="new-ref-edi" placeholder="Ref EDI (ej: BBGJ0002)" style="font-family:monospace;font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:180px">
+        <input type="text" id="new-ref-bc" placeholder="Ref BC (ej: GRAVA-BLANCA)" style="font-family:monospace;font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:200px">
+        <input type="text" id="new-desc-bc" placeholder="Descripción (opcional)" style="font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);flex:1;min-width:150px">
+        <button class="btn btn-primary" onclick="guardarMapeo()"><i class="ti ti-plus"></i> Añadir</button>
+      </div>
+    </div>
+    <div id="mapeos-list"></div>
+  </div>
+</div>
+
+<!-- HISTORIAL -->
+<div class="view" id="view-hist">
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-history"></i> Pedidos importados a BC</div>
+      <button class="btn btn-outline btn-sm" onclick="loadHistorial()"><i class="ti ti-refresh"></i></button>
+    </div>
+    <div id="hist-list"></div>
+  </div>
+</div>
+
+<div class="statusbar"><i class="ti ti-info-circle"></i><span id="sb-msg">Listo</span></div>
+
+<script>
+const api = async (method, path, body) => {
+  const r = await fetch('/api'+path, {
+    method, headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json();
+  if(!r.ok) throw new Error(data.error || 'Error '+r.status);
+  return data;
+};
+
+function log(msg, type=''){
+  const el = document.getElementById('sb-msg');
+  if(el) el.textContent = msg;
+}
+
+function switchTab(t){
+  ['import','mapeos','hist'].forEach(id=>{
+    document.getElementById('tab-'+id).classList.toggle('active',id===t);
+    document.getElementById('view-'+id).classList.toggle('active',id===t);
+  });
+  if(t==='mapeos') loadMapeos();
+  if(t==='hist') loadHistorial();
+}
+
+// ── PARSE EDI ────────────────────────────────────────────────────────────────
+let pedidosParseados = [];
+
+async function parsearEDI(){
+  const texto = document.getElementById('edi-texto').value.trim();
+  if(!texto){ log('Pega el texto del EDI primero','warn'); return; }
+  log('Analizando...');
+  document.getElementById('parse-info').textContent = '';
+  document.getElementById('pedidos-preview').innerHTML = '<div class="empty"><i class="ti ti-loader"></i>Analizando EDI...</div>';
+  try{
+    const data = await api('POST','/edi/parse',{texto});
+    pedidosParseados = data.pedidos;
+    document.getElementById('parse-info').textContent = data.total + ' pedidos encontrados';
+    renderPreview(data.pedidos);
+    log(data.total+' pedidos extraídos del EDI');
+  }catch(e){
+    document.getElementById('pedidos-preview').innerHTML = '<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
+    log('Error: '+e.message);
+  }
+}
+
+function renderPreview(pedidos){
+  if(!pedidos.length){
+    document.getElementById('pedidos-preview').innerHTML='<div class="empty"><i class="ti ti-mood-sad"></i>No se encontraron pedidos</div>';
+    return;
+  }
+
+  const sinMapeo = pedidos.filter(p=>!p.todas_mapeadas);
+  let warning = '';
+  if(sinMapeo.length){
+    warning = `<div style="background:var(--amber-l);border:1px solid var(--amber);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--amber)">
+      <i class="ti ti-alert-triangle"></i> <strong>${sinMapeo.length} pedido(s)</strong> tienen referencias sin mapear — rellena el código BC antes de importar
+    </div>`;
+  }
+
+  const html = warning + pedidos.map((p,pi)=>{
+    const badge = p.todas_mapeadas
+      ? '<span class="badge badge-green"><i class="ti ti-check"></i> Listo</span>'
+      : '<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Faltan mapeos</span>';
+
+    const lineasHtml = p.lineas.map((l,li)=>{
+      const bcInput = l.mapeado
+        ? `<span class="ref-bc">${l.ref_bc}</span><span style="font-size:10px;color:var(--text2);margin-left:6px">${l.descripcion_bc||''}</span>`
+        : `<div style="display:flex;gap:5px;align-items:center">
+            <input type="text" class="map-input" placeholder="Ref BC..." id="map-${pi}-${li}" value="${l.ref_bc||''}">
+            <button class="btn btn-outline btn-sm" onclick="guardarMapeoInline(${pi},${li})">Guardar</button>
+           </div>`;
+      return `<tr>
+        <td><span class="ref-edi">${l.ref_edi}</span></td>
+        <td style="color:var(--text2)">${l.descripcion}</td>
+        <td style="text-align:right;font-family:monospace">${l.cantidad}</td>
+        <td style="text-align:right;font-family:monospace">${l.precio_unidad}</td>
+        <td>${bcInput}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="pedido-card">
+      <div class="pedido-hdr">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="pedido-num">${p.num_pedido}</span>
+            ${badge}
+          </div>
+          <div class="pedido-info" style="margin-top:3px">
+            <span style="font-weight:500">${p.nombre_tienda}</span>
+            <span style="margin:0 6px">·</span>Cliente BC: <span style="font-family:monospace;font-weight:600;color:var(--blue-d)">${p.cliente_bc||'?'}</span>
+            ${p.fecha_entrega?'<span style="margin:0 6px">·</span>Entrega: <strong>'+fmtD(p.fecha_entrega)+'</strong>':''}
+            ${p.total_eur?'<span style="margin:0 6px">·</span><strong>'+p.total_eur.toFixed(2)+' €</strong>':''}
+          </div>
+        </div>
+        <button class="btn btn-green btn-sm" onclick="importarPedido(${pi})" ${!p.todas_mapeadas?'disabled style="opacity:.5;cursor:not-allowed"':''}>
+          <i class="ti ti-cloud-upload"></i> Importar a BC
+        </button>
+      </div>
+      <table class="lineas-table">
+        <thead><tr>
+          <th>Ref EDI</th><th>Descripción</th><th style="text-align:right">Cant.</th>
+          <th style="text-align:right">P.Unit</th><th>Ref BC</th>
+        </tr></thead>
+        <tbody>${lineasHtml}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  document.getElementById('pedidos-preview').innerHTML = html;
+}
+
+function fmtD(d){
+  if(!d) return '—';
+  const [y,m,dd] = d.split('-');
+  return dd+'/'+m+'/'+y;
+}
+
+async function guardarMapeoInline(pi, li){
+  const refBC = document.getElementById(`map-${pi}-${li}`)?.value.trim();
+  if(!refBC){ log('Introduce el código BC','warn'); return; }
+  const linea = pedidosParseados[pi].lineas[li];
+  try{
+    await api('POST','/mapeos',{ref_edi:linea.ref_edi, ref_bc:refBC, descripcion_edi:linea.descripcion});
+    linea.ref_bc = refBC;
+    linea.mapeado = true;
+    // Re-check if all lines of pedido are mapped
+    pedidosParseados[pi].todas_mapeadas = pedidosParseados[pi].lineas.every(l=>l.mapeado);
+    renderPreview(pedidosParseados);
+    log('Mapeo guardado: '+linea.ref_edi+' → '+refBC,'ok');
+  }catch(e){ log('Error: '+e.message); }
+}
+
+async function importarPedido(pi){
+  const pedido = pedidosParseados[pi];
+  if(!pedido.todas_mapeadas){ log('Faltan mapeos','warn'); return; }
+  log('Importando '+pedido.num_pedido+' a BC...');
+  try{
+    const r = await api('POST','/bc/crear-pedido',{pedido});
+    log('✅ Pedido '+pedido.num_pedido+' creado en BC: '+r.bc_order_num);
+    // Mark as imported in UI
+    pedidosParseados[pi].importado = true;
+    pedidosParseados[pi].bc_order_num = r.bc_order_num;
+    renderPreview(pedidosParseados);
+  }catch(e){ log('Error importando: '+e.message); }
+}
+
+// ── MAPEOS ───────────────────────────────────────────────────────────────────
+let mapeos = [];
+
+async function loadMapeos(){
+  try{
+    mapeos = await api('GET','/mapeos');
+    renderMapeos();
+  }catch(e){ log('Error cargando mapeos'); }
+}
+
+function renderMapeos(){
+  const el = document.getElementById('mapeos-list');
+  if(!mapeos.length){
+    el.innerHTML='<div class="empty"><i class="ti ti-arrows-exchange"></i>Sin mapeos todavía.<br>Se añaden automáticamente cuando mapeas referencias al importar.</div>';
+    return;
+  }
+  el.innerHTML='<table class="lineas-table" style="margin:0"><thead><tr>'+
+    '<th>Ref EDI</th><th>Descripción EDI</th><th>Ref BC</th><th>Descripción BC</th><th></th>'+
+    '</tr></thead><tbody>'+
+    mapeos.map(m=>`<tr>
+      <td><span class="ref-edi">${m.ref_edi}</span></td>
+      <td style="color:var(--text2)">${m.descripcion_edi||'—'}</td>
+      <td><span class="ref-bc">${m.ref_bc}</span></td>
+      <td style="color:var(--text2)">${m.descripcion_bc||'—'}</td>
+      <td><button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="borrarMapeo(${m.id})"><i class="ti ti-trash"></i></button></td>
+    </tr>`).join('')+
+    '</tbody></table>';
+}
+
+async function guardarMapeo(){
+  const refEdi = document.getElementById('new-ref-edi').value.trim();
+  const refBc = document.getElementById('new-ref-bc').value.trim();
+  const descBc = document.getElementById('new-desc-bc').value.trim();
+  if(!refEdi||!refBc){ log('Rellena referencia EDI y BC','warn'); return; }
+  try{
+    await api('POST','/mapeos',{ref_edi:refEdi,ref_bc:refBc,descripcion_bc:descBc||null});
+    document.getElementById('new-ref-edi').value='';
+    document.getElementById('new-ref-bc').value='';
+    document.getElementById('new-desc-bc').value='';
+    await loadMapeos();
+    log('Mapeo guardado: '+refEdi+' → '+refBc);
+  }catch(e){ log('Error: '+e.message); }
+}
+
+async function borrarMapeo(id){
+  if(!confirm('¿Eliminar este mapeo?')) return;
+  try{
+    await api('DELETE','/mapeos/'+id);
+    await loadMapeos();
+    log('Mapeo eliminado');
+  }catch(e){ log('Error'); }
+}
+
+// ── HISTORIAL ────────────────────────────────────────────────────────────────
+async function loadHistorial(){
+  const el = document.getElementById('hist-list');
+  try{
+    const data = await api('GET','/historial');
+    if(!data.length){
+      el.innerHTML='<div class="empty"><i class="ti ti-history"></i>Sin pedidos importados todavía</div>';
+      return;
+    }
+    el.innerHTML='<table class="lineas-table"><thead><tr>'+
+      '<th>Nº Pedido LM</th><th>Tienda</th><th>Cliente BC</th><th>Entrega</th><th>Nº BC</th><th>Estado</th>'+
+      '</tr></thead><tbody>'+
+      data.map(p=>`<tr>
+        <td><span class="ref-edi">${p.num_pedido}</span></td>
+        <td style="color:var(--text2)">${p.nombre_tienda||'—'}</td>
+        <td><span class="ref-bc">${p.cliente_bc||'—'}</span></td>
+        <td>${p.fecha_entrega?fmtD(String(p.fecha_entrega).substring(0,10)):'—'}</td>
+        <td>${p.bc_order_num?'<span class="ref-bc">'+p.bc_order_num+'</span>':'—'}</td>
+        <td><span class="badge ${p.estado==='importado'?'badge-green':p.estado==='error'?'badge-red':'badge-amber'}">${p.estado}</span></td>
+      </tr>`).join('')+
+      '</tbody></table>';
+  }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando historial</div>'; }
+}
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+async function init(){
+  try{
+    await api('GET','/bc/company');
+    document.getElementById('bc-status').textContent = '● BC conectado';
+    document.getElementById('bc-status').style.color = '#86efac';
+  }catch(e){
+    document.getElementById('bc-status').textContent = '○ BC sin conectar';
+    document.getElementById('bc-status').style.color = '#fca5a5';
+  }
+}
+init();
+</script>
+</body>
+</html>
