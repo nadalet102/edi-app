@@ -132,8 +132,8 @@ async function initDB(){
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
 function parseEDI(text){
-  // Normalize line endings — handles real newlines and literal \n
-  text = text.replace(/\\n/g,'\n').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  // Normalize — handles real newlines, Windows \r\n, and literal \n strings
+  text = text.replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const pedidos = [];
   const blocks = text.split(/(?=LEROY MERLIN)/g).filter(b=>b.includes('PEDIDO N '));
 
@@ -162,6 +162,12 @@ function parseEDI(text){
     // Total
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
+
+    console.log('Block num_pedido:', numMatch[1]);
+    console.log('Block length:', block.length);
+    console.log('Has REF F:', block.includes('REF F'));
+    console.log('Has TOTAL GENERAL:', block.includes('TOTAL GENERAL'));
+    console.log('Lines in block:', block.split('\n').length);
 
     // Lineas: solo procesar las que están después de la cabecera REF F.-EAN
     const lineas = [];
