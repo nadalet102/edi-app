@@ -203,10 +203,14 @@ app.post('/api/edi/parse', async (req, res) => {
     if(!pedidos.length) return res.status(400).json({error:'No se encontraron pedidos en el texto'});
 
     // Check mapeos for each ref
-    const refs = [...new Set(pedidos.flatMap(p=>p.lineas.map(l=>l.ref_edi)))];
-    const mapeos = (await pool.query('SELECT ref_edi,ref_bc,descripcion_bc FROM edi_mapeos WHERE ref_edi=ANY($1)',[refs])).rows;
-    const mapeoMap = {};
-    mapeos.forEach(m=>mapeoMap[m.ref_edi]=m);
+    let mapeoMap = {};
+    try {
+      const refs = [...new Set(pedidos.flatMap(p=>p.lineas.map(l=>l.ref_edi)))];
+      const mapeos = (await pool.query('SELECT ref_edi,ref_bc,descripcion_bc FROM edi_mapeos WHERE ref_edi=ANY($1)',[refs])).rows;
+      mapeos.forEach(m=>mapeoMap[m.ref_edi]=m);
+    } catch(dbErr) {
+      console.warn('mapeos query error:', dbErr.message);
+    }
 
     // Annotate lines with mapeo status
     pedidos.forEach(p=>{
@@ -223,7 +227,7 @@ app.post('/api/edi/parse', async (req, res) => {
     });
 
     res.json({ pedidos, total: pedidos.length });
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { res.status(500).json({error: e.message || String(e)}); }
 });
 
 // GET /api/mapeos — list all mappings
