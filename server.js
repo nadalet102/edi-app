@@ -133,29 +133,27 @@ async function initDB(){
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
 function parseEDI(text){
   const pedidos = [];
-  // Split by pedido blocks
   const blocks = text.split(/(?=LEROY MERLIN)/g).filter(b=>b.includes('PEDIDO N '));
 
   for(const block of blocks){
-    // Numero pedido
     const numMatch = block.match(/PEDIDO N\s+(\d+)/);
     if(!numMatch) continue;
     const num_pedido = numMatch[1];
 
-    // Tienda nombre y fecha
-    const headerMatch = block.match(/LEROY MERLIN\s+\S*\s+PEDIDO\s+\d+\s+(.+?)\s+EL\s+(\d{2}\/\d{2}\/\d{2})/);
+    // Tienda nombre desde header
+    const headerMatch = block.match(/LEROY MERLIN\s+\S*\s+PEDIDO\s+\d+\s+(.+?)\s+EL\s+\d{2}\/\d{2}\/\d{2}/);
     const nombre_tienda = headerMatch ? headerMatch[1].trim() : '';
-    const fechaRaw = headerMatch ? headerMatch[2] : null;
+
+    // Fecha entrega: entre ** **
+    const fechaEntregaMatch = block.match(/ENTREGUE EL \*\*(\d{2})\/(\d{2})\/(\d{2})\*\*/);
     let fecha_entrega = null;
-    if(fechaRaw){
-      const [d,m,y] = fechaRaw.split('/');
-      fecha_entrega = '20'+y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
+    if(fechaEntregaMatch){
+      fecha_entrega = '20'+fechaEntregaMatch[3]+'-'+fechaEntregaMatch[2].padStart(2,'0')+'-'+fechaEntregaMatch[1].padStart(2,'0');
     }
 
-    // EAN tienda
+    // EAN tienda → codigo → cliente BC
     const eanMatch = block.match(/EAN TIENDA\s+(\d+)/);
     const ean_tienda = eanMatch ? eanMatch[1] : null;
-    // Codigo tienda: posiciones 10-12 del EAN (índices 9,10,11)
     const codigo_tienda = ean_tienda ? ean_tienda.substring(9,12) : null;
     const cliente_bc = codigo_tienda ? 'LM'+codigo_tienda : null;
 
@@ -163,15 +161,14 @@ function parseEDI(text){
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
 
-    // Lineas de producto
+    // Lineas — captura REF  DESC  CANT  PRECIO  REF_LM
+    // Permite * pegado al REF_LM (ej: 0.71*81875883)
     const lineas = [];
-    // Pattern: REF  DESCRIPCION  CANTIDAD  PRECIO  REF_LM
-    const linePattern = /^([A-Z0-9\-]{3,15})\s{2,}(.+?)\s{2,}([\d,\.]+)\s+([\d,\.]+)\s+(\d{8})\s*$/gm;
+    const linePattern = /^([A-Z0-9\-]{3,15})\s{2,}(.+?)\s{2,}([\d,\.]+)\s+([\d,\.]+)\*?(\d{8})\s*$/gm;
     let lm;
     while((lm = linePattern.exec(block)) !== null){
       const ref = lm[1].trim();
-      // Skip header-like lines
-      if(['REF','EAN','LEROY','PEDIDO'].includes(ref)) continue;
+      if(['REF','EAN','LEROY','PEDIDO','TOTAL'].includes(ref)) continue;
       lineas.push({
         ref_edi: ref,
         descripcion: lm[2].trim(),
@@ -325,5 +322,5 @@ app.get('/api/historial', async (req, res) => {
 });
 
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 initDB().then(()=>app.listen(PORT,()=>console.log('EDI server on port '+PORT)));
