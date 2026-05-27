@@ -15,9 +15,9 @@ const pool = new Pool({
 });
 
 // BC credentials
-const BC_TENANT  = process.env.BC_TENANT_ID  || 'c13ac4dc-a581-498c-b06a-cbc08d95ccbf';
-const BC_CLIENT  = process.env.BC_CLIENT_ID  || 'b57f5ab8-8809-47a1-ac8d-e76cbfd3aac9';
-const BC_SECRET  = process.env.BC_SECRET     || 'zjk8Q~4mdaqIzTlNpia3nGSkvsDrlW4wTQODYbf6';
+const BC_TENANT  = process.env.BC_TENANT_ID;
+const BC_CLIENT  = process.env.BC_CLIENT_ID;
+const BC_SECRET  = process.env.BC_SECRET;
 const BC_COMPANY_ID = process.env.BC_COMPANY_ID || ''; // filled after first call
 let bcToken = null, bcTokenExp = 0;
 
