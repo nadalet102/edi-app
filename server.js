@@ -333,50 +333,63 @@ app.get('/api/bc/items/:ref', async (req, res) => {
   } catch(e) { res.status(502).json({error:e.message}); }
 });
 
-// POST /api/bc/crear-pedido — create sales order in BC
+// POST /api/bc/crear-pedido — create sales order in BC via Power Automate flow
 app.post('/api/bc/crear-pedido', async (req, res) => {
   const { pedido } = req.body;
+  const FLOW_URL = process.env.PA_FLOW_URL;
+  if(!FLOW_URL) return res.status(500).json({error:'PA_FLOW_URL no configurada'});
+
   try {
-    // Get company — from cache or fetch from BC
-    let comp = (await pool.query('SELECT company_id FROM bc_company_cache LIMIT 1')).rows[0];
-    if(!comp){
-      const data = await bcGet(`/v2.0/${BC_TENANT}/production/api/v2.0/companies`);
-      const company = data.value.find(c=>c.name.includes('ARISAC'))||data.value[0];
-      await pool.query('INSERT INTO bc_company_cache(company_id,company_name) VALUES($1,$2) ON CONFLICT DO NOTHING',[company.id,company.name]);
-      comp = {company_id: company.id};
-    }
+    // Build payload for Power Automate — only lines with a BC mapping
+    const lineas = pedido.lineas
+      .filter(l => l.ref_bc)
+      .map(l => ({
+        ref_bc: l.ref_bc,
+        cantidad: l.cantidad,
+        precio_unidad: l.precio_unidad
+      }));
 
-    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${comp.company_id})`;
+    const payload = {
+      num_pedido: pedido.num_pedido,
+      cliente_bc: pedido.cliente_bc,
+      fecha_entrega: pedido.fecha_entrega,
+      lineas
+    };
 
-    // Create sales order
-    const order = await bcPost(`${base}/salesOrders`, {
-      customerNumber: pedido.cliente_bc,
-      requestedDeliveryDate: pedido.fecha_entrega,
-      externalDocumentNumber: pedido.num_pedido,
+    // Call the Power Automate flow
+    const flowUrl = new URL(FLOW_URL);
+    const body = JSON.stringify(payload);
+    const result = await new Promise((resolve, reject) => {
+      const r = https.request({
+        hostname: flowUrl.hostname,
+        path: flowUrl.pathname + flowUrl.search,
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+      }, resp => {
+        let d=''; resp.on('data',c=>d+=c);
+        resp.on('end',()=>resolve({status:resp.statusCode, body:d}));
+      });
+      r.on('error', reject);
+      r.write(body); r.end();
     });
 
-    // Add lines
-    for(const linea of pedido.lineas){
-      if(!linea.ref_bc) continue;
-      await bcPost(`${base}/salesOrders(${order.id})/salesOrderLines`, {
-        lineType: 'Item',
-        itemNumber: linea.ref_bc,
-        quantity: linea.cantidad,
-        unitPrice: linea.precio_unidad
-      });
+    if(result.status < 200 || result.status >= 300){
+      throw new Error('Power Automate respondió '+result.status+': '+result.body.substring(0,300));
     }
 
-    // Save lote/pedido to DB
-    const lote = (await pool.query(
-      `INSERT INTO edi_lotes(proveedor,total_pedidos,importados,estado) VALUES('LEROY_MERLIN',1,1,'importado') RETURNING id`
-    )).rows[0];
-    await pool.query(
-      `INSERT INTO edi_pedidos(lote_id,num_pedido,codigo_tienda,nombre_tienda,ean_tienda,cliente_bc,fecha_entrega,total_eur,estado,bc_order_id,bc_order_num)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'importado',$9,$10)`,
-      [lote.id,pedido.num_pedido,pedido.codigo_tienda,pedido.nombre_tienda,pedido.ean_tienda,pedido.cliente_bc,pedido.fecha_entrega,pedido.total_eur,order.id,order.number]
-    );
+    // Save to DB as imported
+    try {
+      const lote = (await pool.query(
+        `INSERT INTO edi_lotes(proveedor,total_pedidos,importados,estado) VALUES('LEROY_MERLIN',1,1,'importado') RETURNING id`
+      )).rows[0];
+      await pool.query(
+        `INSERT INTO edi_pedidos(lote_id,num_pedido,codigo_tienda,nombre_tienda,ean_tienda,cliente_bc,fecha_entrega,total_eur,estado)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'importado')`,
+        [lote.id,pedido.num_pedido,pedido.codigo_tienda,pedido.nombre_tienda,pedido.ean_tienda,pedido.cliente_bc,pedido.fecha_entrega,pedido.total_eur]
+      );
+    } catch(dbErr) { console.warn('DB save error:', dbErr.message); }
 
-    res.json({ok:true, bc_order_num:order.number, bc_order_id:order.id});
+    res.json({ok:true, num_pedido:pedido.num_pedido, mensaje:'Pedido enviado a BC vía Power Automate'});
   } catch(e) {
     res.status(502).json({error:e.message});
   }
