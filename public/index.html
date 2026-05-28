@@ -280,7 +280,7 @@ async function importarPedido(pi){
   log('Importando '+pedido.num_pedido+' a BC...');
   try{
     const r = await api('POST','/bc/crear-pedido',{pedido});
-    log('✅ Pedido '+pedido.num_pedido+' creado en BC: '+r.bc_order_num);
+    log('✅ Pedido '+pedido.num_pedido+' enviado a BC');
     // Mark as imported in UI
     pedidosParseados[pi].importado = true;
     pedidosParseados[pi].bc_order_num = r.bc_order_num;
