@@ -111,6 +111,12 @@ textarea:focus{border-color:var(--blue)}
 .prep-chk{width:30px;text-align:center}
 .prep-box{display:inline-block;width:14px;height:14px;border:1.6px solid var(--text);border-radius:3px;vertical-align:-2px}
 .prep-pfoot{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface2);border-top:1px dashed var(--border2);font-size:12px;font-weight:600;color:var(--text)}
+.prep-gcount{color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0;text-transform:none}
+.prep-htag{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:8px;margin-left:8px;vertical-align:2px}
+.prep-htag.solo{background:rgba(255,255,255,.2);color:#dbeafe}
+.prep-htag.mix{background:#f59e0b;color:#3a2400}
+.prep-tag{display:inline-block;margin-left:8px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:8px;background:#fef3c7;color:#92400e;vertical-align:1px}
+.prep-extra td{background:#fffbeb}
 @media print{
   .topbar,.tabs,.statusbar,#prep-upload{display:none!important}
   body{background:#fff!important}
@@ -518,25 +524,43 @@ function prepRender(pedidos){
 
   const resumen=plist.map(p=>`<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r">${nf(p.m3,2)}</td><td class="prep-r prep-b">${bultos(p)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`).join('');
 
-  const blocks=pedidos.map((o,i)=>{
+  const esSaco = l => /(^|\s)sc(\s|$)/i.test(l.descripcion) || /palet/i.test(l.embalaje||'');
+  const tipoPed = o => { const s=o.lineas.some(esSaco), x=o.lineas.some(l=>!esSaco(l)); return s&&x?'mixto':s?'solo':'otros'; };
+  pedidos.forEach((o,i)=>{ o._i=i; o._tipo=tipoPed(o); });
+  const nSolo=pedidos.filter(o=>o._tipo==='solo').length, nMix=pedidos.filter(o=>o._tipo==='mixto').length, nOtros=pedidos.filter(o=>o._tipo==='otros').length;
+
+  const renderPed = o => {
     const op=o.lineas.reduce((s,l)=>s+l.palet,0),om=o.lineas.reduce((s,l)=>s+l.mini,0);
-    const rows=o.lineas.map(l=>`<tr><td class="prep-chk"><span class="prep-box"></span></td><td class="prep-mono">${l.codigo}</td><td>${l.descripcion}</td><td class="prep-r prep-b">${nf(l.cantidad)}</td><td class="prep-r">${nf(l.kgs)}</td><td class="prep-r prep-emb">${l.embalaje||'—'}</td></tr>`).join('');
+    const marcar = o._tipo!=='solo';
+    const rows=o.lineas.map(l=>{
+      const extra = marcar && !esSaco(l);
+      return `<tr class="${extra?'prep-extra':''}"><td class="prep-chk"><span class="prep-box"></span></td><td class="prep-mono">${l.codigo}</td><td>${l.descripcion}${extra?'<span class="prep-tag">+ aparte</span>':''}</td><td class="prep-r prep-b">${nf(l.cantidad)}</td><td class="prep-r">${nf(l.kgs)}</td><td class="prep-r prep-emb">${l.embalaje||'—'}</td></tr>`;
+    }).join('');
     const metaB=[op?op+' palet':'',om?om+' mini':''].filter(Boolean).join(' + ')||'—';
+    const htag = o._tipo==='solo'?'<span class="prep-htag solo">Solo sacos</span>':o._tipo==='mixto'?'<span class="prep-htag mix">Sacos + otros</span>':'<span class="prep-htag mix">Sin sacos</span>';
     return `<section class="prep-ped"><div class="prep-phead">
-      <div><div class="prep-pnum"><span class="prep-pseq">${String(i+1).padStart(2,'0')}</span> ${o.pedido}</div><div class="prep-ptienda">${o.tienda||'—'}</div></div>
+      <div><div class="prep-pnum"><span class="prep-pseq">${String(o._i+1).padStart(2,'0')}</span> ${o.pedido}${htag}</div><div class="prep-ptienda">${o.tienda||'—'}</div></div>
       <div class="prep-pref"><div class="l">Ref. Leroy Merlin</div><div class="n">${o.docExt||'—'}</div></div>
       <div class="prep-pmeta">${o.fecha||''}<br><b>${metaB}</b></div></div>
       <table class="prep-lines"><thead><tr><th class="prep-chk"></th><th>Código</th><th>Descripción</th><th class="prep-r">Cant.</th><th class="prep-r">Kgs</th><th class="prep-r">Bultos</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="prep-pfoot"><span class="prep-box"></span> Pedido preparado y revisado</div></section>`;
+  };
+
+  const grupos=[{k:'solo',t:'Solo sacos'},{k:'mixto',t:'Sacos + otros · coger material aparte'},{k:'otros',t:'Sin sacos'}];
+  const seccionesPed = grupos.map(g=>{
+    const arr=pedidos.filter(o=>o._tipo===g.k);
+    if(!arr.length) return '';
+    return `<div class="prep-slab">${g.t}<span class="prep-gcount">${arr.length} pedido${arr.length!==1?'s':''}</span></div>`+arr.map(renderPed).join('');
   }).join('');
+  const desglose=[nSolo+' solo sacos', nMix+' mixtos', nOtros?nOtros+' sin sacos':''].filter(s=>!/^0 /.test(s)&&s).join(' · ');
 
   document.getElementById('prep-print').innerHTML=`<div class="card" style="padding:26px 28px">
-    <div class="prep-top"><div><div class="prep-title">Hoja de preparación · Camión</div><div class="prep-dest">${destino}</div><div class="prep-sub">${pedidos.length} pedidos · Cliente LEROY MERLIN · ${hoy}</div></div>
+    <div class="prep-top"><div><div class="prep-title">Hoja de preparación · Camión</div><div class="prep-dest">${destino}</div><div class="prep-sub">${pedidos.length} pedidos · ${desglose} · Cliente LEROY MERLIN · ${hoy}</div></div>
     <div class="prep-kpis"><div class="prep-kpi"><div class="n">${pedidos.length}</div><div class="l">Pedidos</div></div><div class="prep-kpi"><div class="n acc">${tot.palet}<span style="font-size:13px">+${tot.mini}m</span></div><div class="l">Palets+Mini</div></div><div class="prep-kpi"><div class="n">${nf(tot.kgs)}</div><div class="l">Kg</div></div><div class="prep-kpi"><div class="n">${nf(tot.m3,1)}</div><div class="l">m³</div></div></div></div>
     <div class="prep-slab">Resumen de material · qué sacar del almacén</div>
     <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Kgs</th><th class="prep-r">m³</th><th class="prep-r">Bultos</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${resumen}</tbody>
     <tfoot><tr><td></td><td>TOTAL CAMIÓN</td><td class="prep-r">—</td><td class="prep-r">${nf(tot.kgs)}</td><td class="prep-r">${nf(tot.m3,2)}</td><td class="prep-r">${tot.palet} PAL + ${tot.mini} MINI</td><td class="prep-r">${pedidos.length}</td></tr></tfoot></table>
-    <div class="prep-slab">Preparación por pedido · revisar uno a uno</div>${blocks}
+    <div class="prep-slab">Preparación por pedido · revisar uno a uno</div>${seccionesPed}
   </div>`;
 }
 
