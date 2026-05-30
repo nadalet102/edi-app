@@ -74,6 +74,52 @@ textarea:focus{border-color:var(--blue)}
 /* EMPTY */
 .empty{text-align:center;padding:40px;color:var(--text2)}
 .empty i{font-size:32px;opacity:.3;display:block;margin-bottom:10px}
+/* PREPARACIÓN */
+.prep-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--blue-d);padding-bottom:12px}
+.prep-title{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--blue-d)}
+.prep-dest{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1;margin-top:3px;color:var(--text)}
+.prep-sub{font-size:12px;color:var(--text2);margin-top:5px}
+.prep-kpis{display:flex;text-align:right}
+.prep-kpi{padding-left:20px;border-left:1px solid var(--border);margin-left:16px}
+.prep-kpi:first-child{border:0;margin:0;padding:0}
+.prep-kpi .n{font-size:24px;font-weight:800;font-family:monospace;line-height:1;color:var(--text)}
+.prep-kpi .n.acc{color:var(--blue-d)}
+.prep-kpi .l{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-top:3px}
+.prep-slab{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text2);margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.prep-slab::after{content:"";flex:1;height:1px;background:var(--border)}
+.prep-resumen{width:100%;border-collapse:collapse;font-size:13px}
+.prep-resumen th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);text-align:left;padding:6px 10px;border-bottom:2px solid var(--blue-d)}
+.prep-resumen td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.prep-resumen tr:nth-child(even) td{background:var(--surface2)}
+.prep-resumen tfoot td{border-top:2px solid var(--blue-d);border-bottom:0;font-weight:800;padding-top:10px}
+.prep-r{text-align:right}.prep-b{font-weight:700}.prep-mono{font-family:monospace;font-weight:600}
+.prep-ped{margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.prep-phead{display:flex;align-items:center;gap:16px;background:var(--blue-d);color:#fff;padding:9px 14px}
+.prep-pnum{font-family:monospace;font-weight:600;font-size:12px;color:#a9cde8}
+.prep-pseq{color:#7fd4a0;margin-right:4px}
+.prep-ptienda{font-weight:800;font-size:16px;line-height:1;margin-top:2px}
+.prep-pref{display:flex;flex-direction:column;padding:3px 14px;background:#fff;border-radius:6px}
+.prep-pref .l{font-size:8.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--blue-d);font-weight:700}
+.prep-pref .n{font-family:monospace;font-weight:700;font-size:26px;line-height:1.08;color:var(--blue-d)}
+.prep-pmeta{margin-left:auto;font-size:11px;color:#bcd6ea;text-align:right;line-height:1.5}
+.prep-pmeta b{color:#fff}
+.prep-lines{width:100%;border-collapse:collapse;font-size:12.5px}
+.prep-lines th{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);text-align:left;padding:5px 12px;border-bottom:1px solid var(--border)}
+.prep-lines td{padding:7px 12px;border-bottom:1px solid var(--border)}
+.prep-lines tbody tr:last-child td{border-bottom:0}
+.prep-emb{font-family:monospace;font-weight:600;color:var(--blue-d)}
+.prep-chk{width:30px;text-align:center}
+.prep-box{display:inline-block;width:14px;height:14px;border:1.6px solid var(--text);border-radius:3px;vertical-align:-2px}
+.prep-pfoot{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface2);border-top:1px dashed var(--border2);font-size:12px;font-weight:600;color:var(--text)}
+@media print{
+  .topbar,.tabs,.statusbar,#prep-upload{display:none!important}
+  body{background:#fff!important}
+  .view{padding:0!important;max-width:none!important}
+  #prep-print .card{border:none!important;margin:0!important;padding:0!important}
+  .prep-ped{break-inside:avoid;page-break-inside:avoid}
+  @page{margin:12mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+}
 </style>
 </head>
 <body>
@@ -89,6 +135,7 @@ textarea:focus{border-color:var(--blue)}
   <div class="tab active" id="tab-import" onclick="switchTab('import')"><i class="ti ti-upload"></i> Importar EDI</div>
   <div class="tab" id="tab-mapeos" onclick="switchTab('mapeos')"><i class="ti ti-arrows-exchange"></i> Mapeos</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial</div>
+  <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
 </div>
 
 <!-- IMPORTAR -->
@@ -139,6 +186,22 @@ textarea:focus{border-color:var(--blue)}
   </div>
 </div>
 
+<!-- PREPARACIÓN -->
+<div class="view" id="view-prep">
+  <div class="card" id="prep-upload">
+    <div class="card-hdr"><div class="card-title"><i class="ti ti-truck-loading"></i> Hoja de preparación de camión</div></div>
+    <div style="padding:14px 16px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Sube el PDF con todos los pedidos del camión (Informe de documentos de venta de BC). Se genera el resumen de material y la hoja de preparación para imprimir.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
+        <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
+        <span id="prep-info" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+    </div>
+  </div>
+  <div id="prep-print"></div>
+</div>
+
 <div class="statusbar"><i class="ti ti-info-circle"></i><span id="sb-msg">Listo</span></div>
 
 <script>
@@ -158,7 +221,7 @@ function log(msg, type=''){
 }
 
 function switchTab(t){
-  ['import','mapeos','hist'].forEach(id=>{
+  ['import','mapeos','hist','prep'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -364,6 +427,120 @@ async function loadHistorial(){
       '</tbody></table>';
   }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando historial</div>'; }
 }
+
+// ── PREPARACIÓN ──────────────────────────────────────────────────────────────
+const PREP_COL = {desc:57,cant:183,kgs:308,m3:352,emb:376,precio:421,importe:502};
+function prepNum(s){if(s==null)return 0;const t=String(s).trim().replace(/\./g,'').replace(',','.');const v=parseFloat(t);return isNaN(v)?0:v;}
+function prepColOf(x){const C=PREP_COL;if(x<C.desc)return'codigo';if(x<C.cant)return'desc';if(x<C.kgs)return'cant';if(x<C.m3)return'kgs';if(x<C.emb)return'm3';if(x<C.precio)return'emb';if(x<C.importe)return'precio';return'importe';}
+function prepEmb(s){if(!s)return{palet:0,mini:0,raw:''};const t=s.trim();const m=t.match(/(\d+)\s*(PALET|MINI)/i);if(m){const n=parseInt(m[1],10);return m[2].toUpperCase()==='MINI'?{palet:0,mini:n,raw:t}:{palet:n,mini:0,raw:t};}return{palet:0,mini:0,raw:t};}
+
+let prepLoadingPdfjs=null;
+function prepLoadPdfjs(){
+  if(window.pdfjsLib) return Promise.resolve();
+  if(prepLoadingPdfjs) return prepLoadingPdfjs;
+  prepLoadingPdfjs=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';res();};
+    s.onerror=()=>rej(new Error('No se pudo cargar pdf.js (revisa la conexión)'));
+    document.head.appendChild(s);
+  });
+  return prepLoadingPdfjs;
+}
+
+async function prepParsePage(page){
+  const tc=await page.getTextContent();
+  const items=tc.items.map(it=>({s:it.str,x:Math.round(it.transform[4]),y:Math.round(it.transform[5])})).filter(i=>i.s.trim()!=='');
+  const header=items.find(i=>i.s==='No.');
+  const totales=items.find(i=>i.s.startsWith('Totales'));
+  if(!header||!totales)return null;
+  const region=items.filter(i=>i.y<=header.y-5&&i.y>=totales.y+3);
+  region.sort((a,b)=>b.y-a.y||a.x-b.x);
+  const rows=[];let cur=null;
+  for(const it of region){if(!cur||Math.abs(it.y-cur.y)>3){cur={y:it.y,cells:{}};rows.push(cur);}const c=prepColOf(it.x);cur.cells[c]=(cur.cells[c]?cur.cells[c]+' ':'')+it.s.trim();}
+  const lineas=[];
+  for(const r of rows){const c=r.cells;
+    if(c.codigo){const e=prepEmb(c.emb);lineas.push({codigo:c.codigo.trim(),descripcion:(c.desc||'').trim(),cantidad:prepNum(c.cant),kgs:prepNum(c.kgs),m3:prepNum(c.m3),palet:e.palet,mini:e.mini,embalaje:e.raw});}
+    else if(c.desc&&lineas.length){lineas[lineas.length-1].descripcion+=' '+c.desc.trim();}}
+  const pv=items.find(i=>/^PV\d{2}\/\d{3,}$/.test(i.s.trim()));
+  const pedido=pv?pv.s.trim():'';
+  let cliente='',fecha='',docExt='';
+  if(pv){const sr=items.filter(i=>Math.abs(i.y-pv.y)<=3);
+    const cl=sr.find(i=>/^CL\d+$/.test(i.s.trim()));cliente=cl?cl.s.trim():'';
+    const fe=sr.find(i=>/^\d{2}\/\d{2}\/\d{2}$/.test(i.s.trim()));fecha=fe?fe.s.trim():'';
+    const de=sr.find(i=>/^\d{6,}$/.test(i.s.trim()));docExt=de?de.s.trim():'';}
+  const ti=items.find(i=>i.s.trim().startsWith('Tienda:'));
+  const tienda=ti?ti.s.trim().replace(/^Tienda:\s*/,'').trim():'';
+  const dl=items.find(i=>i.s.trim().startsWith('Dirección de descarga'));
+  let destino='';if(dl){const b=items.filter(i=>Math.abs(i.x-dl.x)<8&&i.y<dl.y).sort((a,b)=>b.y-a.y)[0];destino=b?b.s.trim():'';}
+  return {pedido,cliente,fecha,docExt,tienda,destino,lineas};
+}
+
+async function prepCargar(file){
+  if(!file)return;
+  document.getElementById('prep-print-btn').style.display='none';
+  document.getElementById('prep-info').textContent='Leyendo PDF...';
+  document.getElementById('prep-print').innerHTML='<div class="empty"><i class="ti ti-loader"></i>Procesando '+file.name+'...</div>';
+  try{
+    await prepLoadPdfjs();
+    const buf=new Uint8Array(await file.arrayBuffer());
+    const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
+    const pedidos=[];
+    for(let p=1;p<=doc.numPages;p++){
+      const r=await prepParsePage(await doc.getPage(p));
+      if(r&&r.pedido){
+        const prev=pedidos[pedidos.length-1];
+        if(prev&&prev.pedido===r.pedido){prev.lineas.push(...r.lineas);} // pedido repartido en varias páginas
+        else pedidos.push(r);
+      }
+    }
+    if(!pedidos.length)throw new Error('No se detectaron pedidos en el PDF (¿es el informe de documentos de venta de BC?)');
+    prepRender(pedidos);
+    document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
+    document.getElementById('prep-print-btn').style.display='inline-flex';
+    log(pedidos.length+' pedidos procesados para preparación');
+  }catch(e){
+    document.getElementById('prep-print').innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
+    document.getElementById('prep-info').textContent='';
+    log('Error: '+e.message);
+  }
+}
+
+function prepRender(pedidos){
+  const nf=(n,d=0)=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const bultos=p=>{const a=[];if(p.palet)a.push(p.palet+' PAL');if(p.mini)a.push(p.mini+' MINI');return a.length?a.join(' + '):'—';};
+  const prod={};
+  for(const o of pedidos)for(const l of o.lineas){const p=prod[l.codigo]||(prod[l.codigo]={codigo:l.codigo,desc:l.descripcion,cant:0,kgs:0,m3:0,palet:0,mini:0,peds:new Set()});p.cant+=l.cantidad;p.kgs+=l.kgs;p.m3+=l.m3;p.palet+=l.palet;p.mini+=l.mini;p.peds.add(o.pedido);if(l.descripcion.length>p.desc.length)p.desc=l.descripcion;}
+  const plist=Object.values(prod).sort((a,b)=>b.palet-a.palet||b.cant-a.cant);
+  const tot=pedidos.reduce((s,o)=>{o.lineas.forEach(l=>{s.kgs+=l.kgs;s.m3+=l.m3;s.palet+=l.palet;s.mini+=l.mini;});return s;},{kgs:0,m3:0,palet:0,mini:0});
+  const destino=(pedidos[0]&&pedidos[0].destino)||'CAMIÓN';
+  const hoy=new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'});
+
+  const resumen=plist.map(p=>`<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r">${nf(p.m3,2)}</td><td class="prep-r prep-b">${bultos(p)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`).join('');
+
+  const blocks=pedidos.map((o,i)=>{
+    const op=o.lineas.reduce((s,l)=>s+l.palet,0),om=o.lineas.reduce((s,l)=>s+l.mini,0);
+    const rows=o.lineas.map(l=>`<tr><td class="prep-chk"><span class="prep-box"></span></td><td class="prep-mono">${l.codigo}</td><td>${l.descripcion}</td><td class="prep-r prep-b">${nf(l.cantidad)}</td><td class="prep-r">${nf(l.kgs)}</td><td class="prep-r prep-emb">${l.embalaje||'—'}</td></tr>`).join('');
+    const metaB=[op?op+' palet':'',om?om+' mini':''].filter(Boolean).join(' + ')||'—';
+    return `<section class="prep-ped"><div class="prep-phead">
+      <div><div class="prep-pnum"><span class="prep-pseq">${String(i+1).padStart(2,'0')}</span> ${o.pedido}</div><div class="prep-ptienda">${o.tienda||'—'}</div></div>
+      <div class="prep-pref"><div class="l">Ref. Leroy Merlin</div><div class="n">${o.docExt||'—'}</div></div>
+      <div class="prep-pmeta">${o.fecha||''}<br><b>${metaB}</b></div></div>
+      <table class="prep-lines"><thead><tr><th class="prep-chk"></th><th>Código</th><th>Descripción</th><th class="prep-r">Cant.</th><th class="prep-r">Kgs</th><th class="prep-r">Bultos</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="prep-pfoot"><span class="prep-box"></span> Pedido preparado y revisado</div></section>`;
+  }).join('');
+
+  document.getElementById('prep-print').innerHTML=`<div class="card" style="padding:26px 28px">
+    <div class="prep-top"><div><div class="prep-title">Hoja de preparación · Camión</div><div class="prep-dest">${destino}</div><div class="prep-sub">${pedidos.length} pedidos · Cliente LEROY MERLIN · ${hoy}</div></div>
+    <div class="prep-kpis"><div class="prep-kpi"><div class="n">${pedidos.length}</div><div class="l">Pedidos</div></div><div class="prep-kpi"><div class="n acc">${tot.palet}<span style="font-size:13px">+${tot.mini}m</span></div><div class="l">Palets+Mini</div></div><div class="prep-kpi"><div class="n">${nf(tot.kgs)}</div><div class="l">Kg</div></div><div class="prep-kpi"><div class="n">${nf(tot.m3,1)}</div><div class="l">m³</div></div></div></div>
+    <div class="prep-slab">Resumen de material · qué sacar del almacén</div>
+    <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Kgs</th><th class="prep-r">m³</th><th class="prep-r">Bultos</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${resumen}</tbody>
+    <tfoot><tr><td></td><td>TOTAL CAMIÓN</td><td class="prep-r">—</td><td class="prep-r">${nf(tot.kgs)}</td><td class="prep-r">${nf(tot.m3,2)}</td><td class="prep-r">${tot.palet} PAL + ${tot.mini} MINI</td><td class="prep-r">${pedidos.length}</td></tr></tfoot></table>
+    <div class="prep-slab">Preparación por pedido · revisar uno a uno</div>${blocks}
+  </div>`;
+}
+
+function prepImprimir(){ window.print(); }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
