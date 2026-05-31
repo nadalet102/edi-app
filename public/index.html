@@ -165,6 +165,7 @@ textarea:focus{border-color:var(--blue)}
   <div class="tab active" id="tab-import" onclick="switchTab('import')"><i class="ti ti-upload"></i> Importar EDI</div>
   <div class="tab" id="tab-mapeos" onclick="switchTab('mapeos')"><i class="ti ti-arrows-exchange"></i> Mapeos</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial</div>
+  <div class="tab" id="tab-unir" onclick="switchTab('unir')"><i class="ti ti-list-numbers"></i> Unir pedidos</div>
   <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
 </div>
 
@@ -216,6 +217,26 @@ textarea:focus{border-color:var(--blue)}
   </div>
 </div>
 
+<!-- UNIR PEDIDOS -->
+<div class="view" id="view-unir">
+  <div class="card">
+    <div class="card-hdr"><div class="card-title"><i class="ti ti-list-numbers"></i> Unir números de pedido para sacar el PDF</div></div>
+    <div style="padding:14px 16px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Pega los números de pedido (uno por línea, o separados por espacios/comas). Te los uno con barras <code>|</code> en el formato que pide BC para sacar todos los PDF de una vez.</div>
+      <textarea id="unir-in" rows="9" placeholder="PV26/03234&#10;PV26/08394&#10;PV26/04567" oninput="unirGenerar()"></textarea>
+      <div style="margin:10px 0 6px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Resultado</span>
+        <span id="unir-count" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <textarea id="unir-out" rows="4" readonly style="font-family:monospace"></textarea>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="unirCopiar()"><i class="ti ti-copy"></i> Copiar</button>
+        <button class="btn btn-outline" onclick="unirLimpiar()"><i class="ti ti-eraser"></i> Limpiar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PREPARACIÓN -->
 <div class="view" id="view-prep">
   <div class="card" id="prep-upload">
@@ -251,7 +272,7 @@ function log(msg, type=''){
 }
 
 function switchTab(t){
-  ['import','mapeos','hist','prep'].forEach(id=>{
+  ['import','mapeos','hist','unir','prep'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -456,6 +477,27 @@ async function loadHistorial(){
       </tr>`).join('')+
       '</tbody></table>';
   }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando historial</div>'; }
+}
+
+// ── UNIR PEDIDOS ─────────────────────────────────────────────────────────────
+function unirGenerar(){
+  const raw=document.getElementById('unir-in').value;
+  const nums=raw.split(/[\s,;|]+/).map(s=>s.trim()).filter(Boolean).map(s=>s.replace(/^pv/i,'PV'));
+  document.getElementById('unir-out').value=nums.join('|');
+  document.getElementById('unir-count').textContent=nums.length?nums.length+' pedido'+(nums.length!==1?'s':''):'';
+}
+function unirCopiar(){
+  const out=document.getElementById('unir-out');
+  if(!out.value){ log('No hay nada que copiar'); return; }
+  out.select(); out.setSelectionRange(0,99999);
+  const done=()=>log(out.value.split('|').filter(Boolean).length+' pedidos copiados');
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(out.value).then(done).catch(()=>{document.execCommand('copy');done();}); }
+  else { document.execCommand('copy'); done(); }
+}
+function unirLimpiar(){
+  document.getElementById('unir-in').value='';
+  document.getElementById('unir-out').value='';
+  document.getElementById('unir-count').textContent='';
 }
 
 // ── PREPARACIÓN ──────────────────────────────────────────────────────────────
