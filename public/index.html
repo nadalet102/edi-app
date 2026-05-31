@@ -524,7 +524,7 @@ function prepRender(pedidos){
 
   const resumen=plist.map(p=>`<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r">${nf(p.m3,2)}</td><td class="prep-r prep-b">${bultos(p)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`).join('');
 
-  const esSaco = l => /(^|\s)sc(\s|$)/i.test(l.descripcion) || /palet/i.test(l.embalaje||'');
+  const esSaco = l => l.palet>0 || l.mini>0 || /(^|\s)sc(\s|$)/i.test(l.descripcion);
   const tipoPed = o => { const s=o.lineas.some(esSaco), x=o.lineas.some(l=>!esSaco(l)); return s&&x?'mixto':s?'solo':'otros'; };
   pedidos.forEach((o,i)=>{ o._i=i; o._tipo=tipoPed(o); });
   const nSolo=pedidos.filter(o=>o._tipo==='solo').length, nMix=pedidos.filter(o=>o._tipo==='mixto').length, nOtros=pedidos.filter(o=>o._tipo==='otros').length;
