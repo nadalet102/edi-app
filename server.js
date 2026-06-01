@@ -227,19 +227,19 @@ function parseEDI(text){
       if(!enSeccionLineas) continue;
       if(!line.trim()) continue;
       
-      const parts = line.trim().split(/\s+/).filter(Boolean);
-      if(parts.length < 4) continue;
-      const ref = parts[0];
+      // Parse robusto: REF  DESIGNACION  CANTIDAD  PRECIO[*]REF_LM
+      // El precio y la REF LM pueden venir PEGADOS por un asterisco (precio especial),
+      // p.ej. "21.91*14364511" en vez de "21.91 14364511". También admite separación normal.
+      const m = line.trim().match(/^(\S+)\s+(.+?)\s+([\d.,]+)\s+([\d.,]+)\s*\*?\s*(\d{8})\s*$/);
+      if(!m) continue;
+      const ref = m[1];
       // Skip if not a valid product ref
       if(!ref.match(/^[A-Z0-9][A-Z0-9\-]*$/) || ref.length < 3) continue;
-      // Last part must be 8-digit REF_LM
-      const lastRaw = parts[parts.length-1];
-      const refLm = lastRaw.replace(/\*/g,'').replace(/[^0-9]/g,'').slice(0,8);
-      if(refLm.length !== 8) continue;
-      const precio = parseFloat(parts[parts.length-2].replace(',','.'));
-      const cantidad = parseFloat(parts[parts.length-3].replace(',','.'));
+      const descripcion = m[2].trim();
+      const cantidad = parseFloat(m[3].replace(',','.'));
+      const precio = parseFloat(m[4].replace(',','.'));
+      const refLm = m[5];
       if(isNaN(cantidad)||isNaN(precio)) continue;
-      const descripcion = parts.slice(1, parts.length-3).join(' ');
       lineas.push({ ref_edi:ref, descripcion, cantidad, precio_unidad:precio, ref_lm:refLm });
     }
 
