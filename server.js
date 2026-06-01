@@ -126,6 +126,13 @@ async function initDB(){
       company_id TEXT,
       company_name TEXT,
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS bulto_conversiones (
+      id SERIAL PRIMARY KEY,
+      codigo TEXT UNIQUE NOT NULL,
+      descripcion TEXT,
+      uds_por_bulto NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )`
   ];
   for(const sql of stmts){
@@ -403,6 +410,35 @@ app.get('/api/historial', async (req, res) => {
     )).rows;
     res.json(pedidos);
   } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── CONVERSIONES DE BULTOS (uds → bulto) ─────────────────────────────────────
+// GET /api/conversiones — list all
+app.get('/api/conversiones', async (req, res) => {
+  try { res.json((await pool.query('SELECT * FROM bulto_conversiones ORDER BY codigo')).rows); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// POST /api/conversiones — upsert by codigo
+app.post('/api/conversiones', async (req, res) => {
+  const {codigo, descripcion, uds_por_bulto} = req.body;
+  if(!codigo || !uds_por_bulto) return res.status(400).json({error:'Falta código o uds por bulto'});
+  try {
+    const r = await pool.query(
+      `INSERT INTO bulto_conversiones (codigo,descripcion,uds_por_bulto)
+       VALUES ($1,$2,$3)
+       ON CONFLICT(codigo) DO UPDATE SET descripcion=$2,uds_por_bulto=$3
+       RETURNING *`,
+      [codigo, descripcion||null, uds_por_bulto]
+    );
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// DELETE /api/conversiones/:id
+app.delete('/api/conversiones/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM bulto_conversiones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
 });
 
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
