@@ -204,6 +204,20 @@ textarea:focus{border-color:var(--blue)}
     </div>
     <div id="mapeos-list"></div>
   </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-hdr"><div class="card-title"><i class="ti ti-package"></i> Conversión de bultos (uds → bulto)</div></div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Indica cuántas unidades de un producto forman 1 bulto. Se usa en la hoja de preparación para contar los bultos (ej: 14 ud de antihierba = 1 bulto).</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" id="new-conv-cod" placeholder="Código (ej: PROT014)" style="font-family:monospace;font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:170px">
+        <input type="text" id="new-conv-desc" placeholder="Descripción (opcional)" style="font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);flex:1;min-width:150px">
+        <input type="number" id="new-conv-uds" placeholder="Uds/bulto" min="0" step="any" style="font-family:monospace;font-size:13px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:110px">
+        <button class="btn btn-primary" onclick="guardarConversion()"><i class="ti ti-plus"></i> Añadir</button>
+      </div>
+    </div>
+    <div id="conv-list"></div>
+  </div>
 </div>
 
 <!-- HISTORIAL -->
@@ -276,7 +290,7 @@ function switchTab(t){
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
-  if(t==='mapeos') loadMapeos();
+  if(t==='mapeos'){ loadMapeos(); loadConversiones(); }
   if(t==='hist') loadHistorial();
 }
 
@@ -455,6 +469,49 @@ async function borrarMapeo(id){
   }catch(e){ log('Error'); }
 }
 
+// ── CONVERSIONES DE BULTOS ───────────────────────────────────────────────────
+let conversiones = [];
+async function loadConversiones(){
+  try{ conversiones = await api('GET','/conversiones'); renderConversiones(); }
+  catch(e){ log('Error cargando conversiones'); }
+}
+function renderConversiones(){
+  const el = document.getElementById('conv-list');
+  if(!el) return;
+  if(!conversiones.length){
+    el.innerHTML='<div class="empty"><i class="ti ti-package"></i>Sin conversiones todavía.<br>Añade cuántas unidades de cada producto forman 1 bulto.</div>';
+    return;
+  }
+  el.innerHTML='<table class="lineas-table" style="margin:0"><thead><tr>'+
+    '<th>Código</th><th>Descripción</th><th>Uds por bulto</th><th></th></tr></thead><tbody>'+
+    conversiones.map(c=>`<tr>
+      <td><span class="ref-bc">${c.codigo}</span></td>
+      <td style="color:var(--text2)">${c.descripcion||'—'}</td>
+      <td><b>${(+c.uds_por_bulto).toLocaleString('es-ES')}</b> ud = 1 bulto</td>
+      <td><button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="borrarConversion(${c.id})"><i class="ti ti-trash"></i></button></td>
+    </tr>`).join('')+
+    '</tbody></table>';
+}
+async function guardarConversion(){
+  const cod = document.getElementById('new-conv-cod').value.trim();
+  const desc = document.getElementById('new-conv-desc').value.trim();
+  const uds = parseFloat(document.getElementById('new-conv-uds').value);
+  if(!cod || !uds || uds<=0){ log('Rellena código y uds por bulto (mayor que 0)','warn'); return; }
+  try{
+    await api('POST','/conversiones',{codigo:cod, descripcion:desc||null, uds_por_bulto:uds});
+    document.getElementById('new-conv-cod').value='';
+    document.getElementById('new-conv-desc').value='';
+    document.getElementById('new-conv-uds').value='';
+    await loadConversiones();
+    log('Conversión guardada: '+uds+' ud de '+cod+' = 1 bulto');
+  }catch(e){ log('Error: '+e.message); }
+}
+async function borrarConversion(id){
+  if(!confirm('¿Eliminar esta conversión?')) return;
+  try{ await api('DELETE','/conversiones/'+id); await loadConversiones(); log('Conversión eliminada'); }
+  catch(e){ log('Error'); }
+}
+
 // ── HISTORIAL ────────────────────────────────────────────────────────────────
 async function loadHistorial(){
   const el = document.getElementById('hist-list');
@@ -502,6 +559,11 @@ function unirLimpiar(){
 
 // ── PREPARACIÓN ──────────────────────────────────────────────────────────────
 const PREP_COL = {desc:57,cant:183,kgs:308,m3:352,emb:376,precio:421,importe:502};
+let prepConv = {}; // codigo -> uds por bulto
+async function prepCargarConversiones(){
+  try{ const cv=await api('GET','/conversiones'); prepConv={}; cv.forEach(c=>prepConv[c.codigo]=+c.uds_por_bulto); }
+  catch(e){ prepConv={}; }
+}
 function prepNum(s){if(s==null)return 0;const t=String(s).trim().replace(/\./g,'').replace(',','.');const v=parseFloat(t);return isNaN(v)?0:v;}
 function prepColOf(x){const C=PREP_COL;if(x<C.desc)return'codigo';if(x<C.cant)return'desc';if(x<C.kgs)return'cant';if(x<C.m3)return'kgs';if(x<C.emb)return'm3';if(x<C.precio)return'emb';if(x<C.importe)return'precio';return'importe';}
 function prepEmb(s){if(!s)return{palet:0,mini:0,raw:''};const t=s.trim();const m=t.match(/(\d+)\s*(PALET|MINI)/i);if(m){const n=parseInt(m[1],10);return m[2].toUpperCase()==='MINI'?{palet:0,mini:n,raw:t}:{palet:n,mini:0,raw:t};}return{palet:0,mini:0,raw:t};}
@@ -555,6 +617,7 @@ async function prepCargar(file){
   document.getElementById('prep-print').innerHTML='<div class="empty"><i class="ti ti-loader"></i>Procesando '+file.name+'...</div>';
   try{
     await prepLoadPdfjs();
+    await prepCargarConversiones();
     const buf=new Uint8Array(await file.arrayBuffer());
     const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
     const pedidos=[];
@@ -580,6 +643,8 @@ async function prepCargar(file){
 
 function prepRender(pedidos){
   const nf=(n,d=0)=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const bultosDe=l=>{const u=prepConv[l.codigo]; return u>0? l.cantidad/u : l.cantidad;};
+  const nbf=n=>Number(n||0).toLocaleString('es-ES',{maximumFractionDigits:2});
   const bultos=p=>{const a=[];if(p.palet)a.push(p.palet+' PAL');if(p.mini)a.push(p.mini+' MINI');return a.length?a.join(' + '):'—';};
   const prod={};
   for(const o of pedidos)for(const l of o.lineas){const p=prod[l.codigo]||(prod[l.codigo]={codigo:l.codigo,desc:l.descripcion,cant:0,kgs:0,m3:0,palet:0,mini:0,peds:new Set()});p.cant+=l.cantidad;p.kgs+=l.kgs;p.m3+=l.m3;p.palet+=l.palet;p.mini+=l.mini;p.peds.add(o.pedido);if(l.descripcion.length>p.desc.length)p.desc=l.descripcion;}
@@ -602,7 +667,7 @@ function prepRender(pedidos){
   const paletProds=plist.filter(p=>p.palet>0||p.mini>0);
   const bultoProds=plist.filter(p=>p.palet===0&&p.mini===0);
   const rowPalet=p=>`<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r">${nf(p.m3,2)}</td><td class="prep-r prep-b">${bultos(p)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`;
-  const rowBulto=p=>`<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`;
+  const rowBulto=p=>{const nb=prepConv[p.codigo]>0?p.cant/prepConv[p.codigo]:p.cant; return `<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r prep-b">${nbf(nb)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`;};
   const paletRows=paletProds.map(rowPalet).join('');
   const bultoRows=bultoProds.map(rowBulto).join('');
   pedidos.forEach(o=>{
@@ -614,15 +679,18 @@ function prepRender(pedidos){
     o._enf=(o._bultoLines.length>0 && o._palets>=1)?1:0;          // 1 palet de base por pedido mixto
     o._sueltos=Math.max(o._palets-o._enf,0);
     o._base=o._enf?basePalet(o):null;
+    o._nb=o._bultoLines.reduce((s,l)=>s+bultosDe(l),0);   // nº de bultos del pedido (con conversión)
   });
   const pedEnf=pedidos.filter(o=>o._enf);
   const pedBultosSueltos=pedidos.filter(o=>o._bultosOnly);
   const nEnf=pedEnf.length, nBS=pedBultosSueltos.length;
   const totSueltos=pedidos.reduce((s,o)=>s+o._sueltos,0);
   const totEnf=pedidos.reduce((s,o)=>s+o._enf,0);
-  const bultosTxt=o=>o._bultoLines.map(l=>`${nf(l.cantidad)}× ${l.descripcion}`).join('<br>');
-  const enfRows=pedEnf.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td><b>1 palet de ${o._base?o._base.descripcion:'sacos'}</b><br>+ ${bultosTxt(o)}</td><td class="prep-r">${o._sueltos||'—'}</td></tr>`).join('');
-  const bsRows=pedBultosSueltos.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>${bultosTxt(o)}</td></tr>`).join('');
+  const totBultos=pedidos.reduce((s,o)=>s+o._nb,0);
+  const totBultosEnf=pedEnf.reduce((s,o)=>s+o._nb,0);
+  const bultosTxt=o=>o._bultoLines.map(l=>{const nb=bultosDe(l);return `<b>${nbf(nb)} bulto${nb!==1?'s':''}</b> (${nf(l.cantidad)} ud) ${l.descripcion}`;}).join('<br>');
+  const enfRows=pedEnf.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>1 palet de <b>${o._base?o._base.descripcion:'sacos'}</b><br>+ ${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td><td class="prep-r">${o._sueltos||'—'}</td></tr>`).join('');
+  const bsRows=pedBultosSueltos.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td></tr>`).join('');
 
   const renderPed = o => {
     const op=o.lineas.reduce((s,l)=>s+l.palet,0),om=o.lineas.reduce((s,l)=>s+l.mini,0);
@@ -657,17 +725,18 @@ function prepRender(pedidos){
     <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Kgs</th><th class="prep-r">m³</th><th class="prep-r">Bultos</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${paletRows}</tbody>
     <tfoot><tr><td></td><td>Total palets material</td><td class="prep-r">—</td><td class="prep-r">${nf(tot.kgs)}</td><td class="prep-r">${nf(tot.m3,2)}</td><td class="prep-r">${tot.palet} PAL + ${tot.mini} MINI</td><td class="prep-r"></td></tr></tfoot></table>
     ${bultoProds.length?`<div class="prep-subslab b"><i class="ti ti-package"></i> Bultos · van enfardados (no se sacan en palet)</div>
-    <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Kgs</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${bultoRows}</tbody></table>`:''}
+    <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Bultos</th><th class="prep-r">Kgs</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${bultoRows}</tbody></table>`:''}
     <div class="prep-slab">Montaje · cómo se carga</div>
     <div class="prep-montaje">
       <div class="prep-mcard"><div class="mn">${totSueltos}<span>+ ${tot.mini} mini</span></div><div class="ml">Palets sueltos · etiquetar</div></div>
       <div class="prep-mcard enf"><div class="mn">${totEnf}</div><div class="ml">Enfardados · 1 palet + bultos</div></div>
+      <div class="prep-mcard enf"><div class="mn">${nbf(totBultos)}</div><div class="ml">Bultos en total</div></div>
       ${nBS?`<div class="prep-mcard bs"><div class="mn">${nBS}</div><div class="ml">Pedidos de bultos sueltos</div></div>`:''}
     </div>
-    ${nEnf?`<table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Palet base + bultos a enfardar encima</th><th class="prep-r">Sueltos</th></tr></thead><tbody>${enfRows}</tbody></table>`:''}
+    ${nEnf?`<table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Palet base + bultos a enfardar encima</th><th class="prep-r">Nº bultos</th><th class="prep-r">Sueltos</th></tr></thead><tbody>${enfRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;border-top:1px solid #f0d9a8">Total bultos enfardados</td><td class="prep-r prep-b" style="border-top:1px solid #f0d9a8">${nbf(totBultosEnf)}</td><td style="border-top:1px solid #f0d9a8"></td></tr></tfoot></table>`:''}
     ${nBS?`<div class="prep-subslab b" style="margin-top:14px"><i class="ti ti-packages"></i> Bultos sueltos · pedidos sin palet (cargar aparte)</div>
-    <table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Bultos a cargar sueltos</th></tr></thead><tbody>${bsRows}</tbody></table>`:''}
-    <div class="prep-total"><span>A cargar en el camión</span><span><b>${tot.palet} palets</b>${tot.mini?` + ${tot.mini} mini`:''}${nBS?` + bultos sueltos (${nBS} ped.)`:''} <span class="muted">(${totSueltos} sueltos + ${totEnf} enfardados${tot.mini?` + ${tot.mini} mini`:''}) · ${nf(tot.kgs)} kg</span></span></div>
+    <table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Bultos a cargar sueltos</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${bsRows}</tbody></table>`:''}
+    <div class="prep-total"><span>A cargar en el camión</span><span><b>${tot.palet} palets</b>${tot.mini?` + ${tot.mini} mini`:''} <span class="muted">(${totSueltos} sueltos + ${totEnf} enfardados${tot.mini?` + ${tot.mini} mini`:''}) · ${nbf(totBultos)} bultos · ${nf(tot.kgs)} kg</span></span></div>
     <div class="prep-slab">Preparación por pedido · revisar uno a uno</div>${seccionesPed}
   </div>`;
 }
