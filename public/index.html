@@ -689,7 +689,7 @@ function prepRender(pedidos){
   const totBultos=pedidos.reduce((s,o)=>s+o._nb,0);
   const totBultosEnf=pedEnf.reduce((s,o)=>s+o._nb,0);
   const bultosTxt=o=>o._bultoLines.map(l=>{const nb=bultosDe(l);return `<b>${nbf(nb)} bulto${nb!==1?'s':''}</b> (${nf(l.cantidad)} ud) ${l.descripcion}`;}).join('<br>');
-  const enfRows=pedEnf.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>1 palet de <b>${o._base?o._base.descripcion:'sacos'}</b><br>+ ${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td><td class="prep-r">${o._sueltos||'—'}</td></tr>`).join('');
+  const enfRows=pedEnf.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>1 palet de <b>${o._base?o._base.descripcion:'sacos'}</b><br>+ ${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td></tr>`).join('');
   const bsRows=pedBultosSueltos.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td></tr>`).join('');
 
   const renderPed = o => {
@@ -733,7 +733,7 @@ function prepRender(pedidos){
       <div class="prep-mcard enf"><div class="mn">${nbf(totBultos)}</div><div class="ml">Bultos en total</div></div>
       ${nBS?`<div class="prep-mcard bs"><div class="mn">${nBS}</div><div class="ml">Pedidos de bultos sueltos</div></div>`:''}
     </div>
-    ${nEnf?`<table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Palet base + bultos a enfardar encima</th><th class="prep-r">Nº bultos</th><th class="prep-r">Sueltos</th></tr></thead><tbody>${enfRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;border-top:1px solid #f0d9a8">Total bultos enfardados</td><td class="prep-r prep-b" style="border-top:1px solid #f0d9a8">${nbf(totBultosEnf)}</td><td style="border-top:1px solid #f0d9a8"></td></tr></tfoot></table>`:''}
+    ${nEnf?`<table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Palet base + bultos a enfardar encima</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${enfRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;border-top:1px solid #f0d9a8">Total bultos enfardados</td><td class="prep-r prep-b" style="border-top:1px solid #f0d9a8">${nbf(totBultosEnf)}</td></tr></tfoot></table>`:''}
     ${nBS?`<div class="prep-subslab b" style="margin-top:14px"><i class="ti ti-packages"></i> Bultos sueltos · pedidos sin palet (cargar aparte)</div>
     <table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Bultos a cargar sueltos</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${bsRows}</tbody></table>`:''}
     <div class="prep-total"><span>A cargar en el camión</span><span><b>${tot.palet} palets</b>${tot.mini?` + ${tot.mini} mini`:''} <span class="muted">(${totSueltos} sueltos + ${totEnf} enfardados${tot.mini?` + ${tot.mini} mini`:''}) · ${nbf(totBultos)} bultos · ${nf(tot.kgs)} kg</span></span></div>
