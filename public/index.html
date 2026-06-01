@@ -46,6 +46,8 @@ textarea:focus{border-color:var(--blue)}
 .btn-sm{padding:4px 10px;font-size:12px}
 /* PEDIDO CARD */
 .pedido-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
+.pedido-card.importado{border-color:var(--green);box-shadow:inset 5px 0 0 var(--green)}
+.pedido-card.importado .pedido-hdr{background:var(--green-l)}
 .pedido-hdr{padding:12px 14px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:10px}
 .pedido-num{font-weight:700;font-family:monospace;color:var(--blue-d);font-size:15px}
 .pedido-info{font-size:12px;color:var(--text2)}
@@ -330,7 +332,9 @@ function renderPreview(pedidos){
   }
 
   const html = warning + pedidos.map((p,pi)=>{
-    const badge = p.todas_mapeadas
+    const badge = p.importado
+      ? '<span class="badge badge-green" style="font-size:12px;padding:4px 11px;font-weight:700"><i class="ti ti-circle-check-filled"></i> IMPORTADO</span>'
+      : p.todas_mapeadas
       ? '<span class="badge badge-green"><i class="ti ti-check"></i> Listo</span>'
       : '<span class="badge badge-amber"><i class="ti ti-alert-triangle"></i> Faltan mapeos</span>';
 
@@ -350,7 +354,7 @@ function renderPreview(pedidos){
       </tr>`;
     }).join('');
 
-    return `<div class="pedido-card">
+    return `<div class="pedido-card${p.importado?' importado':''}">
       <div class="pedido-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -364,9 +368,9 @@ function renderPreview(pedidos){
             ${p.total_eur?'<span style="margin:0 6px">·</span><strong>'+p.total_eur.toFixed(2)+' €</strong>':''}
           </div>
         </div>
-        <button class="btn btn-green btn-sm" onclick="importarPedido(${pi})" ${!p.todas_mapeadas?'disabled style="opacity:.5;cursor:not-allowed"':''}>
-          <i class="ti ti-cloud-upload"></i> Importar a BC
-        </button>
+        ${p.importado
+          ? `<button class="btn btn-sm" disabled style="background:var(--green);color:#fff;opacity:1;cursor:default;font-weight:700"><i class="ti ti-check"></i> Importado${p.bc_order_num?' · '+p.bc_order_num:''}</button>`
+          : `<button class="btn btn-green btn-sm" onclick="importarPedido(${pi})" ${!p.todas_mapeadas?'disabled style="opacity:.5;cursor:not-allowed"':''}><i class="ti ti-cloud-upload"></i> Importar a BC</button>`}
       </div>
       <table class="lineas-table">
         <thead><tr>
@@ -404,6 +408,7 @@ async function guardarMapeoInline(pi, li){
 
 async function importarPedido(pi){
   const pedido = pedidosParseados[pi];
+  if(pedido.importado){ log('Este pedido ya está importado'); return; }
   if(!pedido.todas_mapeadas){ log('Faltan mapeos','warn'); return; }
   log('Importando '+pedido.num_pedido+' a BC...');
   try{
