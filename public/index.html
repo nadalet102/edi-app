@@ -46,8 +46,11 @@ textarea:focus{border-color:var(--blue)}
 .btn-sm{padding:4px 10px;font-size:12px}
 /* PEDIDO CARD */
 .pedido-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
-.pedido-card.importado{border-color:var(--green);box-shadow:inset 5px 0 0 var(--green)}
+.pedido-card.importado{border-color:var(--green);box-shadow:inset 5px 0 0 var(--green);background:var(--green-l)}
 .pedido-card.importado .pedido-hdr{background:var(--green-l)}
+.pedido-card.importado .pedido-num{text-decoration:line-through;text-decoration-thickness:2px}
+.pedido-card.importado .pedido-info{text-decoration:line-through;color:var(--text2)}
+.pedido-card.importado .lineas-table{opacity:.5;text-decoration:line-through}
 .pedido-hdr{padding:12px 14px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:10px}
 .pedido-num{font-weight:700;font-family:monospace;color:var(--blue-d);font-size:15px}
 .pedido-info{font-size:12px;color:var(--text2)}
@@ -308,8 +311,14 @@ async function parsearEDI(){
   try{
     const data = await api('POST','/edi/parse',{texto});
     pedidosParseados = data.pedidos;
+    // Marcar como importados los que ya estén en el historial de BC
+    try{
+      const hist = await api('GET','/historial');
+      const yaImportados = new Set(hist.map(h=>String(h.num_pedido)));
+      pedidosParseados.forEach(p=>{ if(yaImportados.has(String(p.num_pedido))) p.importado = true; });
+    }catch(_){}
     document.getElementById('parse-info').textContent = data.total + ' pedidos encontrados';
-    renderPreview(data.pedidos);
+    renderPreview(pedidosParseados);
     log(data.total+' pedidos extraídos del EDI');
   }catch(e){
     document.getElementById('pedidos-preview').innerHTML = '<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
