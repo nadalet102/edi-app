@@ -265,8 +265,19 @@ textarea:focus{border-color:var(--blue)}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
-        <button class="btn btn-outline" id="prep-excel-btn" onclick="prepDescargarExcel()" style="display:none"><i class="ti ti-file-spreadsheet"></i> Descargar Excel (planilla)</button>
+        <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
         <span id="prep-info" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px">Datos del envío (para el PDF)</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <label style="font-size:11px;color:var(--text2)">Matrícula<input type="text" id="prep-f-matricula" placeholder="0000XXX" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+          <label style="font-size:11px;color:var(--text2)">F. Carga<input type="text" id="prep-f-fcarga" placeholder="dd/mm/aa" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+          <label style="font-size:11px;color:var(--text2)">F. Entrega<input type="text" id="prep-f-fentrega" placeholder="dd/mm/aa" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+          <label style="font-size:11px;color:var(--text2)">Hora<input type="text" id="prep-f-hora" placeholder="08:00H" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+          <label style="font-size:11px;color:var(--text2)">Cita<input type="text" id="prep-f-cita" placeholder="—" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+          <label style="font-size:11px;color:var(--text2)">Entrega<input type="text" id="prep-f-entrega" placeholder="—" style="width:100%;margin-top:3px;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+        </div>
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text2)">Albaranes (opcional, para rellenar la columna ALB.):</span>
@@ -656,7 +667,7 @@ async function prepCargar(file){
     prepRender(pedidos);
     document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
     document.getElementById('prep-print-btn').style.display='inline-flex';
-    document.getElementById('prep-excel-btn').style.display='inline-flex';
+    document.getElementById('prep-pdf-btn').style.display='inline-flex';
     log(pedidos.length+' pedidos procesados para preparación');
   }catch(e){
     document.getElementById('prep-print').innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
@@ -807,98 +818,84 @@ async function prepCargarAlbaranes(file){
   }
 }
 
-// ── EXCEL PLANILLA ───────────────────────────────────────────────────────────
-let _xlsxLoaded=false;
-function prepLoadXlsx(){
-  if(_xlsxLoaded&&window.XLSX)return Promise.resolve();
-  return new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-    s.onload=()=>{_xlsxLoaded=true;res();};
-    s.onerror=()=>rej(new Error('No se pudo cargar la librería de Excel'));
-    document.head.appendChild(s);
-  });
+// ── PDF PLANILLA ─────────────────────────────────────────────────────────────
+let _jspdfLoaded=false;
+function _prepScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('No se pudo cargar '+src));document.head.appendChild(s);});}
+async function prepLoadJsPDF(){
+  if(_jspdfLoaded&&window.jspdf)return;
+  await _prepScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await _prepScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  _jspdfLoaded=true;
 }
-
-function buildPlanilla(pedidos){
-  const X=window.XLSX;
-  const esSaco = l => l.palet>0 || l.mini>0 || /(^|\s)sc(\s|$)/i.test(l.descripcion);
-  const bultosDe=l=>{const u=prepConv[l.codigo]; return u>0? l.cantidad/u : l.cantidad;};
+function prepFields(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
+  return {matricula:g('prep-f-matricula'),fcarga:g('prep-f-fcarga'),fentrega:g('prep-f-fentrega'),hora:g('prep-f-hora'),cita:g('prep-f-cita'),entrega:g('prep-f-entrega')};
+}
+function buildPlanillaPDF(pedidos){
+  const { jsPDF }=window.jspdf;
+  const norm=v=>String(parseInt(String(v).replace(/\D/g,''),10)||'');
+  const nf=n=>Number(n||0).toLocaleString('es-ES',{maximumFractionDigits:2});
+  const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
+  const bultosDe=l=>{const u=prepConv[l.codigo];return u>0?l.cantidad/u:l.cantidad;};
   pedidos.forEach(o=>{
     o._palets=o.lineas.reduce((s,l)=>s+l.palet,0);
     o._kg=o.lineas.reduce((s,l)=>s+l.kgs,0);
     o._nb=o.lineas.filter(l=>!esSaco(l)).reduce((s,l)=>s+bultosDe(l),0);
-    const m=(o.tienda||'').match(/\b(\d{3})\b/); o._lm = m? 'LM'+m[1] : '';
+    const m=(o.tienda||'').match(/\b(\d{3})\b/);o._lm=m?'LM'+m[1]:'';
   });
-  const PINK={patternType:'solid',fgColor:{rgb:'FF99CC'}};
-  const GRAY={patternType:'solid',fgColor:{rgb:'C0C0C0'}};
-  const thin={style:'thin',color:{rgb:'000000'}};
-  const BORDER={top:thin,bottom:thin,left:thin,right:thin};
-  const F=(o={})=>({name:'Arial',sz:10,...o});
-  const ctr={horizontal:'center',vertical:'center',wrapText:true};
-  const cell=(v,opt={})=>({v,t:typeof v==='number'?'n':'s',s:{font:F(opt.font),fill:opt.fill,border:opt.border||BORDER,alignment:opt.align||ctr,...(opt.numFmt?{numFmt:opt.numFmt}:{})}});
-  const fml=(f,opt={})=>({f,t:'n',s:{font:F(opt.font),fill:opt.fill,border:opt.border||BORDER,alignment:opt.align||ctr}});
-  const ws={}; const merges=[];
-  const set=(a,c)=>{ws[a]=c;};
-  set('A1',cell('ENVASADOS ARISAC, S.L.',{fill:PINK})); merges.push('A1:D1');
-  set('A2',cell('C/ Capitán Cendra, 79',{fill:PINK})); merges.push('A2:D2');
-  set('A3',cell('03780 Pego (Alicante)',{fill:PINK})); merges.push('A3:D3');
-  set('A4',cell('B-53779021',{fill:PINK})); merges.push('A4:D4');
-  set('E1',cell('CLIENTE :LEROY MERLIN ESPAÑA, S.L.U.',{fill:PINK,font:{sz:11}})); merges.push('E1:I1');
-  set('E2',cell('Avda. de la Vega, 2-2º planta',{fill:PINK,font:{sz:11}})); merges.push('E2:I2');
-  set('E3',cell('28108 Alcobendas (Madrid)',{fill:PINK,font:{sz:11}})); merges.push('E3:I3');
-  const lblG=v=>cell(v,{fill:GRAY,font:{bold:true,sz:9}});
-  const lblP=v=>cell(v,{fill:PINK,font:{sz:9},align:{horizontal:'left',vertical:'center'}});
-  const blank=()=>cell('',{font:{sz:9}});
-  set('A5',lblP('TRANSP.')); set('B5',blank());
-  set('A7',lblP('DIRECCIÓN')); set('B7',blank());
-  set('A8',lblP('MATRICULA')); set('B8',blank()); merges.push('B8:C8');
-  set('B6',blank());
-  set('D5',lblG('F.CARGA')); merges.push('D5:E5'); set('F5',blank()); merges.push('F5:G5');
-  set('D6',lblG('F. ENTREGA')); merges.push('D6:E6'); set('F6',blank()); merges.push('F6:G6');
-  set('D7',lblG('Hora')); merges.push('D7:E7'); set('F7',blank()); merges.push('F7:G7');
-  set('D8',lblG('CITA')); merges.push('D8:E8'); set('F8',blank()); merges.push('F8:I8');
-  set('D9',lblG('ENTREGA')); merges.push('D9:E9'); set('F9',blank()); merges.push('F9:I9');
-  const n=pedidos.length, first=12, last=first+n-1, totR=last+1;
-  set('H5',lblG('PALETS EUROPEOS')); set('I5',fml('E'+totR));
-  set('H6',lblG('BULTOS')); set('I6',fml('F'+totR));
-  set('H7',lblG('PALETS AMERICANOS')); set('I7',fml('G'+totR));
-  set('A10',cell('LISTADO DE PEDIDOS (A completar por proveedor)',{fill:GRAY,font:{bold:true,sz:16}})); merges.push('A10:I10');
-  ['Nº Pedido','Nº TIENDA','Nombre Tienda','Peso KG','palet europeo','Bultos','PALET AMERICANO','ALB.','PEDIDO ARISAC']
-    .forEach((h,i)=>set(X.utils.encode_cell({r:10,c:i}),cell(h,{fill:GRAY,font:{bold:true,sz:10}})));
-  pedidos.forEach((o,idx)=>{
-    const r=first-1+idx;
-    const alb=prepAlbaranes[normRef(o.docExt)]||'';
-    const row=[o.docExt||'', o._lm, o.tienda||'', o._kg||'', o._palets||'', o._nb||'', '', alb, o.pedido||''];
-    row.forEach((v,c)=>{
-      const isNum=(c===3||c===4||c===5)&&v!=='';
-      set(X.utils.encode_cell({r,c}),{v:isNum?v:String(v),t:isNum?'n':'s',
-        s:{font:F({sz:10}),border:BORDER,alignment:c===2?{horizontal:'left',vertical:'center',wrapText:true}:ctr,...(c===3?{numFmt:'#,##0.00'}:{})}});
-    });
+  const fields=prepFields();
+  const PINK=[255,153,204],GRAY=[208,208,208],WH=[255,255,255];
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const M=10,W=210,RW=W-2*M; let y=M;
+  const box=(x,yy,w,h,fill)=>{doc.setDrawColor(120);if(fill){doc.setFillColor(fill[0],fill[1],fill[2]);doc.rect(x,yy,w,h,'FD');}else doc.rect(x,yy,w,h);};
+  const T=(s,x,yy,o)=>{o=o||{};doc.setFont('helvetica',o.b?'bold':'normal');doc.setFontSize(o.sz||9);doc.text(String(s),x,yy,{align:o.al||'left',baseline:'middle'});};
+  box(M,y,95,22,PINK); box(M+95,y,RW-95,22,PINK);
+  T('ENVASADOS ARISAC, S.L.',M+3,y+5,{b:true,sz:10});
+  T('C/ Capitán Cendra, 79',M+3,y+10,{sz:9});
+  T('03780 Pego (Alicante)',M+3,y+15,{sz:9});
+  T('B-53779021',M+3,y+20,{sz:9});
+  T('CLIENTE: LEROY MERLIN ESPAÑA, S.L.U.',M+98,y+5,{b:true,sz:9});
+  T('Avda. de la Vega, 2-2ª planta',M+98,y+10,{sz:9});
+  T('28108 Alcobendas (Madrid)',M+98,y+14.5,{sz:9});
+  T('CIF: B84818442',M+98,y+19,{sz:8});
+  y+=22;
+  const rowH=7;
+  const lLbl=24,lVal=60;
+  [['TRANSP.','TRANS CALAFAT, SL'],['CIF:','B-53270047'],['DIRECCIÓN','C/FRAY FDO. ALCINA, 7'],['MATRICULA',fields.matricula||'']].forEach((r,i)=>{const yy=y+i*rowH;box(M,yy,lLbl,rowH,PINK);box(M+lLbl,yy,lVal,rowH,WH);T(r[0],M+2,yy+rowH/2,{sz:8});T(r[1],M+lLbl+2,yy+rowH/2,{sz:8,b:i<1});});
+  const cx=M+86,cLbl=22,cVal=36;
+  [['F.CARGA',fields.fcarga||''],['F. ENTREGA',fields.fentrega||''],['Hora',fields.hora||''],['CITA',fields.cita||''],['ENTREGA',fields.entrega||'']].forEach((r,i)=>{const yy=y+i*rowH;box(cx,yy,cLbl,rowH,GRAY);box(cx+cLbl,yy,cVal,rowH,WH);T(r[0],cx+2,yy+rowH/2,{sz:8,b:true});T(r[1],cx+cLbl+2,yy+rowH/2,{sz:8});});
+  const tx=cx+cLbl+cVal+2,tLbl=30,tVal=190-(tx-M)-30;
+  const totPal=pedidos.reduce((s,o)=>s+(o._palets||0),0),totBul=pedidos.reduce((s,o)=>s+(o._nb||0),0);
+  [['PALETS EUROPEOS',totPal],['BULTOS',nf(totBul)]].forEach((r,i)=>{const yy=y+i*rowH;box(tx,yy,tLbl,rowH,GRAY);box(tx+tLbl,yy,tVal,rowH,WH);T(r[0],tx+1.5,yy+rowH/2,{sz:7,b:true});T(r[1],tx+tLbl+tVal/2,yy+rowH/2,{sz:11,al:'center',b:true});});
+  y+=5*rowH+3;
+  box(M,y,RW,8,GRAY); T('LISTADO DE PEDIDOS',W/2,y+4,{b:true,sz:13,al:'center'}); y+=8;
+  const body=pedidos.map(o=>[o.docExt||'',o._lm||'',o.tienda||'',nf(o._kg),o._palets||'',o._nb?nf(o._nb):'',prepAlbaranes[norm(o.docExt)]||'',o.pedido||'']);
+  const pesoTot=pedidos.reduce((s,o)=>s+(o._kg||0),0);
+  doc.autoTable({
+    startY:y,margin:{left:M,right:M},
+    head:[['Nº Pedido','Nº TIENDA','Nombre Tienda','Peso KG','Palet europeo','Bultos','ALB.','PEDIDO ARISAC']],
+    body,foot:[['','','TOTALES',nf(pesoTot),totPal,nf(totBul),'','']],
+    theme:'grid',
+    styles:{font:'helvetica',fontSize:8,cellPadding:1.3,lineColor:[80,80,80],lineWidth:0.1,valign:'middle'},
+    headStyles:{fillColor:GRAY,textColor:[0,0,0],fontStyle:'bold',halign:'center',fontSize:8},
+    footStyles:{fillColor:[238,238,238],textColor:[0,0,0],fontStyle:'bold'},
+    columnStyles:{0:{halign:'center'},1:{halign:'center'},2:{halign:'left',cellWidth:42},3:{halign:'right'},4:{halign:'center'},5:{halign:'center'},6:{halign:'center'},7:{halign:'center'}}
   });
-  set('D'+totR,fml(`SUM(D${first}:D${last})`,{font:{bold:true}}));
-  set('E'+totR,fml(`SUM(E${first}:E${last})`,{font:{bold:true}}));
-  set('F'+totR,fml(`SUM(F${first}:F${last})`,{font:{bold:true}}));
-  set('G'+totR,fml(`SUM(G${first}:G${last})`,{font:{bold:true}}));
-  ['A','B','C','H','I'].forEach(col=>set(col+totR,cell('',{border:BORDER})));
-  ws['!ref']=`A1:I${totR}`;
-  ws['!merges']=merges.map(m=>X.utils.decode_range(m));
-  ws['!cols']=[{wch:14.4},{wch:10.1},{wch:21.3},{wch:10.7},{wch:8},{wch:8.1},{wch:8},{wch:21},{wch:16.7}];
-  const wb=X.utils.book_new();
-  X.utils.book_append_sheet(wb,ws,'PLANILLA');
-  return wb;
+  let fy=doc.lastAutoTable.finalY+18; if(fy>280)fy=280;
+  const sigW=RW/3;
+  ['Cargador','Transportista','Lm Plataforma'].forEach((s,i)=>{const x=M+i*sigW;doc.setDrawColor(120);doc.line(x+6,fy,x+sigW-6,fy);T(s,x+sigW/2,fy+4,{sz:9,al:'center'});});
+  return doc;
 }
-
-async function prepDescargarExcel(){
+async function prepDescargarPDF(){
   if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
-  log('Generando Excel...');
+  log('Generando PDF...');
   try{
-    await prepLoadXlsx();
-    const wb=buildPlanilla(prepPedidos);
+    await prepLoadJsPDF();
+    const doc=buildPlanillaPDF(prepPedidos);
     const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
-    window.XLSX.writeFile(wb,'Planilla preparacion '+hoy+'.xlsx');
-    log('Excel descargado');
-  }catch(e){ log('Error generando Excel: '+e.message); }
+    doc.save('Planilla preparacion '+hoy+'.pdf');
+    log('PDF descargado');
+  }catch(e){ log('Error generando PDF: '+e.message); }
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
