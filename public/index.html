@@ -265,7 +265,13 @@ textarea:focus{border-color:var(--blue)}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
+        <button class="btn btn-outline" id="prep-excel-btn" onclick="prepDescargarExcel()" style="display:none"><i class="ti ti-file-spreadsheet"></i> Descargar Excel (planilla)</button>
         <span id="prep-info" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2)">Albaranes (opcional, para rellenar la columna ALB.):</span>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer"><i class="ti ti-file-upload"></i> PDF de albaranes<input type="file" id="prep-alb-file" accept="application/pdf" style="display:none" onchange="prepCargarAlbaranes(this.files[0])"></label>
+        <span id="prep-alb-info" style="font-size:12px;color:var(--green)"></span>
       </div>
     </div>
   </div>
@@ -574,6 +580,8 @@ function unirLimpiar(){
 // ── PREPARACIÓN ──────────────────────────────────────────────────────────────
 const PREP_COL = {desc:57,cant:183,kgs:308,m3:352,emb:376,precio:421,importe:502};
 let prepConv = {}; // codigo -> uds por bulto
+let prepPedidos = []; // pedidos parseados del último PDF (para el Excel)
+let prepAlbaranes = {}; // ref Leroy (normalizada) -> nº albarán AV
 async function prepCargarConversiones(){
   try{ const cv=await api('GET','/conversiones'); prepConv={}; cv.forEach(c=>prepConv[c.codigo]=+c.uds_por_bulto); }
   catch(e){ prepConv={}; }
@@ -644,9 +652,11 @@ async function prepCargar(file){
       }
     }
     if(!pedidos.length)throw new Error('No se detectaron pedidos en el PDF (¿es el informe de documentos de venta de BC?)');
+    prepPedidos=pedidos;
     prepRender(pedidos);
     document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
     document.getElementById('prep-print-btn').style.display='inline-flex';
+    document.getElementById('prep-excel-btn').style.display='inline-flex';
     log(pedidos.length+' pedidos procesados para preparación');
   }catch(e){
     document.getElementById('prep-print').innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
@@ -756,6 +766,140 @@ function prepRender(pedidos){
 }
 
 function prepImprimir(){ window.print(); }
+
+// ── ALBARANES (rellenar columna ALB.) ────────────────────────────────────────
+const normRef = v => String(parseInt(String(v).replace(/\D/g,''),10)||'');
+async function prepParseAlbaranesPage(page){
+  const tc=await page.getTextContent();
+  const items=tc.items.map(it=>({s:(it.str||'').trim(),x:it.transform[4],y:it.transform[5]})).filter(i=>i.s);
+  const full=items.map(i=>i.s).join(' ');
+  const av=(full.match(/AV\d{2}\/\d+/)||[])[0]||null;
+  // docExt = nº documento externo: número 6-8 dígitos justo debajo del rótulo "externo"
+  let ext=null;
+  const lbl=items.find(i=>/externo/i.test(i.s));
+  if(lbl){
+    const c=items.filter(i=>/^\d{6,8}$/.test(i.s)&&i.y<lbl.y&&Math.abs(i.x-lbl.x)<60).sort((a,b)=>b.y-a.y);
+    if(c.length) ext=c[0].s;
+  }
+  if(!ext){ const m=full.match(/(?<!\d)\d{6,8}(?!\d)/); ext=m?m[0]:null; }
+  return (av&&ext)?{docExt:ext,albaran:av}:null;
+}
+async function prepCargarAlbaranes(file){
+  if(!file)return;
+  document.getElementById('prep-alb-info').style.color='var(--text2)';
+  document.getElementById('prep-alb-info').textContent='Leyendo albaranes...';
+  try{
+    await prepLoadPdfjs();
+    const buf=new Uint8Array(await file.arrayBuffer());
+    const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
+    prepAlbaranes={}; let n=0;
+    for(let p=1;p<=doc.numPages;p++){
+      const r=await prepParseAlbaranesPage(await doc.getPage(p));
+      if(r){ prepAlbaranes[normRef(r.docExt)]=r.albaran; n++; }
+    }
+    document.getElementById('prep-alb-info').style.color='var(--green)';
+    document.getElementById('prep-alb-info').textContent='✓ '+n+' albaranes cargados';
+    log(n+' albaranes cargados · se rellenarán al descargar el Excel');
+  }catch(e){
+    document.getElementById('prep-alb-info').style.color='var(--red)';
+    document.getElementById('prep-alb-info').textContent='Error leyendo albaranes';
+    log('Error leyendo albaranes: '+e.message);
+  }
+}
+
+// ── EXCEL PLANILLA ───────────────────────────────────────────────────────────
+let _xlsxLoaded=false;
+function prepLoadXlsx(){
+  if(_xlsxLoaded&&window.XLSX)return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    s.onload=()=>{_xlsxLoaded=true;res();};
+    s.onerror=()=>rej(new Error('No se pudo cargar la librería de Excel'));
+    document.head.appendChild(s);
+  });
+}
+
+function buildPlanilla(pedidos){
+  const X=window.XLSX;
+  const esSaco = l => l.palet>0 || l.mini>0 || /(^|\s)sc(\s|$)/i.test(l.descripcion);
+  const bultosDe=l=>{const u=prepConv[l.codigo]; return u>0? l.cantidad/u : l.cantidad;};
+  pedidos.forEach(o=>{
+    o._palets=o.lineas.reduce((s,l)=>s+l.palet,0);
+    o._kg=o.lineas.reduce((s,l)=>s+l.kgs,0);
+    o._nb=o.lineas.filter(l=>!esSaco(l)).reduce((s,l)=>s+bultosDe(l),0);
+    const m=(o.tienda||'').match(/\b(\d{3})\b/); o._lm = m? 'LM'+m[1] : '';
+  });
+  const PINK={patternType:'solid',fgColor:{rgb:'FF99CC'}};
+  const GRAY={patternType:'solid',fgColor:{rgb:'C0C0C0'}};
+  const thin={style:'thin',color:{rgb:'000000'}};
+  const BORDER={top:thin,bottom:thin,left:thin,right:thin};
+  const F=(o={})=>({name:'Arial',sz:10,...o});
+  const ctr={horizontal:'center',vertical:'center',wrapText:true};
+  const cell=(v,opt={})=>({v,t:typeof v==='number'?'n':'s',s:{font:F(opt.font),fill:opt.fill,border:opt.border||BORDER,alignment:opt.align||ctr,...(opt.numFmt?{numFmt:opt.numFmt}:{})}});
+  const fml=(f,opt={})=>({f,t:'n',s:{font:F(opt.font),fill:opt.fill,border:opt.border||BORDER,alignment:opt.align||ctr}});
+  const ws={}; const merges=[];
+  const set=(a,c)=>{ws[a]=c;};
+  set('A1',cell('ENVASADOS ARISAC, S.L.',{fill:PINK})); merges.push('A1:D1');
+  set('A2',cell('C/ Capitán Cendra, 79',{fill:PINK})); merges.push('A2:D2');
+  set('A3',cell('03780 Pego (Alicante)',{fill:PINK})); merges.push('A3:D3');
+  set('A4',cell('B-53779021',{fill:PINK})); merges.push('A4:D4');
+  set('E1',cell('CLIENTE :LEROY MERLIN ESPAÑA, S.L.U.',{fill:PINK,font:{sz:11}})); merges.push('E1:I1');
+  set('E2',cell('Avda. de la Vega, 2-2º planta',{fill:PINK,font:{sz:11}})); merges.push('E2:I2');
+  set('E3',cell('28108 Alcobendas (Madrid)',{fill:PINK,font:{sz:11}})); merges.push('E3:I3');
+  const lblG=v=>cell(v,{fill:GRAY,font:{bold:true,sz:9}});
+  const lblP=v=>cell(v,{fill:PINK,font:{sz:9},align:{horizontal:'left',vertical:'center'}});
+  const blank=()=>cell('',{font:{sz:9}});
+  set('A5',lblP('TRANSP.')); set('B5',blank());
+  set('A7',lblP('DIRECCIÓN')); set('B7',blank());
+  set('A8',lblP('MATRICULA')); set('B8',blank()); merges.push('B8:C8');
+  set('B6',blank());
+  set('D5',lblG('F.CARGA')); merges.push('D5:E5'); set('F5',blank()); merges.push('F5:G5');
+  set('D6',lblG('F. ENTREGA')); merges.push('D6:E6'); set('F6',blank()); merges.push('F6:G6');
+  set('D7',lblG('Hora')); merges.push('D7:E7'); set('F7',blank()); merges.push('F7:G7');
+  set('D8',lblG('CITA')); merges.push('D8:E8'); set('F8',blank()); merges.push('F8:I8');
+  set('D9',lblG('ENTREGA')); merges.push('D9:E9'); set('F9',blank()); merges.push('F9:I9');
+  const n=pedidos.length, first=12, last=first+n-1, totR=last+1;
+  set('H5',lblG('PALETS EUROPEOS')); set('I5',fml('E'+totR));
+  set('H6',lblG('BULTOS')); set('I6',fml('F'+totR));
+  set('H7',lblG('PALETS AMERICANOS')); set('I7',fml('G'+totR));
+  set('A10',cell('LISTADO DE PEDIDOS (A completar por proveedor)',{fill:GRAY,font:{bold:true,sz:16}})); merges.push('A10:I10');
+  ['Nº Pedido','Nº TIENDA','Nombre Tienda','Peso KG','palet europeo','Bultos','PALET AMERICANO','ALB.','PEDIDO ARISAC']
+    .forEach((h,i)=>set(X.utils.encode_cell({r:10,c:i}),cell(h,{fill:GRAY,font:{bold:true,sz:10}})));
+  pedidos.forEach((o,idx)=>{
+    const r=first-1+idx;
+    const alb=prepAlbaranes[normRef(o.docExt)]||'';
+    const row=[o.docExt||'', o._lm, o.tienda||'', o._kg||'', o._palets||'', o._nb||'', '', alb, o.pedido||''];
+    row.forEach((v,c)=>{
+      const isNum=(c===3||c===4||c===5)&&v!=='';
+      set(X.utils.encode_cell({r,c}),{v:isNum?v:String(v),t:isNum?'n':'s',
+        s:{font:F({sz:10}),border:BORDER,alignment:c===2?{horizontal:'left',vertical:'center',wrapText:true}:ctr,...(c===3?{numFmt:'#,##0.00'}:{})}});
+    });
+  });
+  set('D'+totR,fml(`SUM(D${first}:D${last})`,{font:{bold:true}}));
+  set('E'+totR,fml(`SUM(E${first}:E${last})`,{font:{bold:true}}));
+  set('F'+totR,fml(`SUM(F${first}:F${last})`,{font:{bold:true}}));
+  set('G'+totR,fml(`SUM(G${first}:G${last})`,{font:{bold:true}}));
+  ['A','B','C','H','I'].forEach(col=>set(col+totR,cell('',{border:BORDER})));
+  ws['!ref']=`A1:I${totR}`;
+  ws['!merges']=merges.map(m=>X.utils.decode_range(m));
+  ws['!cols']=[{wch:14.4},{wch:10.1},{wch:21.3},{wch:10.7},{wch:8},{wch:8.1},{wch:8},{wch:21},{wch:16.7}];
+  const wb=X.utils.book_new();
+  X.utils.book_append_sheet(wb,ws,'PLANILLA');
+  return wb;
+}
+
+async function prepDescargarExcel(){
+  if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
+  log('Generando Excel...');
+  try{
+    await prepLoadXlsx();
+    const wb=buildPlanilla(prepPedidos);
+    const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
+    window.XLSX.writeFile(wb,'Planilla preparacion '+hoy+'.xlsx');
+    log('Excel descargado');
+  }catch(e){ log('Error generando Excel: '+e.message); }
+}
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
