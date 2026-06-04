@@ -133,6 +133,14 @@ async function initDB(){
       descripcion TEXT,
       uds_por_bulto NUMERIC NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS preparaciones (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT,
+      resumen TEXT,
+      num_pedidos INTEGER,
+      datos JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )`
   ];
   for(const sql of stmts){
@@ -439,6 +447,35 @@ app.post('/api/conversiones', async (req, res) => {
 app.delete('/api/conversiones/:id', async (req, res) => {
   try { await pool.query('DELETE FROM bulto_conversiones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── PREPARACIONES GUARDADAS ──────────────────────────────────────────────────
+// GET /api/preparaciones — lista (sin los datos pesados)
+app.get('/api/preparaciones', async (req, res) => {
+  try { res.json((await pool.query('SELECT id,nombre,resumen,num_pedidos,created_at FROM preparaciones ORDER BY created_at DESC LIMIT 100')).rows); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+// GET /api/preparaciones/:id — registro completo con datos
+app.get('/api/preparaciones/:id', async (req, res) => {
+  try { const r=await pool.query('SELECT * FROM preparaciones WHERE id=$1',[req.params.id]); if(!r.rows.length)return res.status(404).json({error:'No encontrada'}); res.json(r.rows[0]); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+// POST /api/preparaciones — guardar
+app.post('/api/preparaciones', async (req, res) => {
+  const {nombre, resumen, num_pedidos, datos} = req.body;
+  if(!datos) return res.status(400).json({error:'Faltan datos'});
+  try {
+    const r = await pool.query(
+      `INSERT INTO preparaciones (nombre,resumen,num_pedidos,datos) VALUES ($1,$2,$3,$4::jsonb) RETURNING id,nombre,resumen,num_pedidos,created_at`,
+      [nombre||null, resumen||null, num_pedidos||0, JSON.stringify(datos)]
+    );
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+// DELETE /api/preparaciones/:id
+app.delete('/api/preparaciones/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM preparaciones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e){ res.status(500).json({error:e.message}); }
 });
 
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
