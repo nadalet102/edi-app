@@ -78,6 +78,11 @@ textarea:focus{border-color:var(--blue)}
 .field input:focus,.field select:focus{border-color:var(--blue)}
 /* EMPTY */
 .empty{text-align:center;padding:40px;color:var(--text2)}
+.hist-day{margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.hist-day-hdr{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--green-l);border-bottom:1px solid var(--border)}
+.hist-date{font-weight:700;color:var(--blue-d);font-size:13px;display:flex;align-items:center;gap:7px}
+.hist-meta{font-size:12px;color:var(--text2);font-weight:600}
+.hist-day table{margin:0}
 .empty i{font-size:32px;opacity:.3;display:block;margin-bottom:10px}
 /* PREPARACIÓN */
 .prep-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--blue-d);padding-bottom:12px}
@@ -229,7 +234,7 @@ textarea:focus{border-color:var(--blue)}
 <div class="view" id="view-hist">
   <div class="card">
     <div class="card-hdr">
-      <div class="card-title"><i class="ti ti-history"></i> Pedidos importados a BC</div>
+      <div class="card-title"><i class="ti ti-history"></i> Pedidos importados · por día de entrega</div>
       <button class="btn btn-outline btn-sm" onclick="loadHistorial()"><i class="ti ti-refresh"></i></button>
     </div>
     <div id="hist-list"></div>
@@ -266,6 +271,8 @@ textarea:focus{border-color:var(--blue)}
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
+        <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="display:none;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
+        <button class="btn btn-outline" id="prep-save-btn" onclick="prepGuardar()" style="display:none"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
         <span id="prep-info" style="font-size:12px;color:var(--text2)"></span>
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
@@ -285,6 +292,13 @@ textarea:focus{border-color:var(--blue)}
         <span id="prep-alb-info" style="font-size:12px;color:var(--green)"></span>
       </div>
     </div>
+  </div>
+  <div class="card" id="prep-guardadas-card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-archive"></i> Preparaciones guardadas</div>
+      <button class="btn btn-outline btn-sm" onclick="prepCargarGuardadas()"><i class="ti ti-refresh"></i></button>
+    </div>
+    <div id="prep-guardadas-list"></div>
   </div>
   <div id="prep-print"></div>
 </div>
@@ -314,6 +328,7 @@ function switchTab(t){
   });
   if(t==='mapeos'){ loadMapeos(); loadConversiones(); }
   if(t==='hist') loadHistorial();
+  if(t==='prep') prepCargarGuardadas();
 }
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
@@ -552,18 +567,33 @@ async function loadHistorial(){
       el.innerHTML='<div class="empty"><i class="ti ti-history"></i>Sin pedidos importados todavía</div>';
       return;
     }
-    el.innerHTML='<table class="lineas-table"><thead><tr>'+
-      '<th>Nº Pedido LM</th><th>Tienda</th><th>Cliente BC</th><th>Entrega</th><th>Nº BC</th><th>Estado</th>'+
-      '</tr></thead><tbody>'+
-      data.map(p=>`<tr>
-        <td><span class="ref-edi">${p.num_pedido}</span></td>
-        <td style="color:var(--text2)">${p.nombre_tienda||'—'}</td>
-        <td><span class="ref-bc">${p.cliente_bc||'—'}</span></td>
-        <td>${p.fecha_entrega?fmtD(String(p.fecha_entrega).substring(0,10)):'—'}</td>
-        <td>${p.bc_order_num?'<span class="ref-bc">'+p.bc_order_num+'</span>':'—'}</td>
-        <td><span class="badge ${p.estado==='importado'?'badge-green':p.estado==='error'?'badge-red':'badge-amber'}">${p.estado}</span></td>
-      </tr>`).join('')+
-      '</tbody></table>';
+    // Agrupar por fecha de entrega
+    const groups={};
+    data.forEach(p=>{ const k=p.fecha_entrega?String(p.fecha_entrega).substring(0,10):''; (groups[k]=groups[k]||[]).push(p); });
+    const keys=Object.keys(groups).sort((a,b)=>{ if(!a)return 1; if(!b)return -1; return b.localeCompare(a); });
+    const fmtDia=k=>{ if(!k)return 'Sin fecha de entrega'; const d=new Date(k+'T00:00:00'); const s=d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); return s.charAt(0).toUpperCase()+s.slice(1); };
+    const eur=n=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+    el.innerHTML=keys.map(k=>{
+      const arr=groups[k];
+      const tot=arr.reduce((s,p)=>s+(parseFloat(p.total_eur)||0),0);
+      return `<div class="hist-day">
+        <div class="hist-day-hdr">
+          <span class="hist-date"><i class="ti ti-calendar-event"></i> ${fmtDia(k)}</span>
+          <span class="hist-meta">${arr.length} pedido${arr.length!==1?'s':''}${tot?' · '+eur(tot):''}</span>
+        </div>
+        <table class="lineas-table"><thead><tr>
+          <th>Nº Pedido LM</th><th>Tienda</th><th>Cliente BC</th><th>Nº BC</th><th>Estado</th>
+        </tr></thead><tbody>
+        ${arr.map(p=>`<tr>
+          <td><span class="ref-edi">${p.num_pedido}</span></td>
+          <td style="color:var(--text2)">${p.nombre_tienda||'—'}</td>
+          <td><span class="ref-bc">${p.cliente_bc||'—'}</span></td>
+          <td>${p.bc_order_num?'<span class="ref-bc">'+p.bc_order_num+'</span>':'—'}</td>
+          <td><span class="badge ${p.estado==='importado'?'badge-green':p.estado==='error'?'badge-red':'badge-amber'}">${p.estado}</span></td>
+        </tr>`).join('')}
+        </tbody></table>
+      </div>`;
+    }).join('');
   }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando historial</div>'; }
 }
 
@@ -668,6 +698,8 @@ async function prepCargar(file){
     document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
     document.getElementById('prep-print-btn').style.display='inline-flex';
     document.getElementById('prep-pdf-btn').style.display='inline-flex';
+    document.getElementById('prep-save-btn').style.display='inline-flex';
+    document.getElementById('prep-save-name').style.display='inline-block';
     log(pedidos.length+' pedidos procesados para preparación');
   }catch(e){
     document.getElementById('prep-print').innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
@@ -705,6 +737,7 @@ function prepRender(pedidos){
   const rowBulto=p=>{const nb=prepConv[p.codigo]>0?p.cant/prepConv[p.codigo]:p.cant; return `<tr><td class="prep-mono">${p.codigo}</td><td>${p.desc}</td><td class="prep-r prep-b">${nf(p.cant)}</td><td class="prep-r prep-b">${nbf(nb)}</td><td class="prep-r">${nf(p.kgs)}</td><td class="prep-r" style="color:var(--text3)">${p.peds.size}</td></tr>`;};
   const paletRows=paletProds.map(rowPalet).join('');
   const bultoRows=bultoProds.map(rowBulto).join('');
+  const bCant=bultoProds.reduce((s,p)=>s+p.cant,0), bKgs=bultoProds.reduce((s,p)=>s+p.kgs,0);
   pedidos.forEach(o=>{
     o._palets=o.lineas.reduce((s,l)=>s+l.palet,0);
     o._mini=o.lineas.reduce((s,l)=>s+l.mini,0);
@@ -726,13 +759,14 @@ function prepRender(pedidos){
   const bultosTxt=o=>o._bultoLines.map(l=>{const nb=bultosDe(l);return `<b>${nbf(nb)} bulto${nb!==1?'s':''}</b> (${nf(l.cantidad)} ud) ${l.descripcion}`;}).join('<br>');
   const enfRows=pedEnf.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>1 palet de <b>${o._base?o._base.descripcion:'sacos'}</b><br>+ ${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td></tr>`).join('');
   const bsRows=pedBultosSueltos.map(o=>`<tr><td class="prep-mono">${o.docExt||o.pedido}</td><td>${o.tienda}</td><td>${bultosTxt(o)}</td><td class="prep-r prep-b">${nbf(o._nb)}</td></tr>`).join('');
+  const totBultosSueltos=pedBultosSueltos.reduce((s,o)=>s+o._nb,0);
 
   const renderPed = o => {
     const op=o.lineas.reduce((s,l)=>s+l.palet,0),om=o.lineas.reduce((s,l)=>s+l.mini,0);
     const marcar = o._tipo!=='solo';
     const rows=o.lineas.map(l=>{
       const extra = marcar && !esSaco(l);
-      return `<tr class="${extra?'prep-extra':''}"><td class="prep-chk"><span class="prep-box"></span></td><td class="prep-mono">${l.codigo}</td><td>${l.descripcion}${extra?'<span class="prep-tag">+ aparte</span>':''}</td><td class="prep-r prep-b">${nf(l.cantidad)}</td><td class="prep-r">${nf(l.kgs)}</td><td class="prep-r prep-emb">${l.embalaje||'—'}</td></tr>`;
+      return `<tr class="${extra?'prep-extra':''}"><td class="prep-chk"><span class="prep-box"></span></td><td class="prep-mono">${l.codigo}</td><td>${l.descripcion}${extra?'<span class="prep-tag">+ aparte</span>':''}</td><td class="prep-r prep-b">${nf(l.cantidad)}</td><td class="prep-r">${nf(l.kgs)}</td><td class="prep-r prep-emb">${esSaco(l)?(l.embalaje||'—'):(nbf(bultosDe(l))+' bulto'+(bultosDe(l)!==1?'s':''))}</td></tr>`;
     }).join('');
     const metaB=[op?op+' palet':'',om?om+' mini':''].filter(Boolean).join(' + ')||'—';
     const htag = o._tipo==='solo'?'<span class="prep-htag solo">Solo sacos</span>':o._tipo==='mixto'?'<span class="prep-htag mix">Sacos + otros</span>':'<span class="prep-htag mix">Sin sacos</span>';
@@ -744,7 +778,7 @@ function prepRender(pedidos){
       <div class="prep-pfoot"><span class="prep-box"></span> Pedido preparado y revisado${o._bultosOnly?`<span class="prep-mnote"><i class="ti ti-packages"></i> Bultos sueltos · sin palet, cargar aparte</span>`:o._enf?`<span class="prep-mnote"><i class="ti ti-package"></i> Montar: 1 palet de ${o._base?o._base.descripcion:'sacos'} enfardado con los bultos${o._sueltos?` · ${o._sueltos} palet${o._sueltos!==1?'s':''} suelto${o._sueltos!==1?'s':''}`:''}</span>`:''}</div></section>`;
   };
 
-  const grupos=[{k:'solo',t:'Solo sacos'},{k:'mixto',t:'Sacos + otros · coger material aparte'},{k:'otros',t:'Bultos sueltos · sin palet'}];
+  const grupos=[{k:'otros',t:'Solo bultos sueltos · sin palet'},{k:'mixto',t:'Palets + bultos · coger material aparte'},{k:'solo',t:'Solo palets'}];
   const seccionesPed = grupos.map(g=>{
     const arr=pedidos.filter(o=>o._tipo===g.k);
     if(!arr.length) return '';
@@ -759,8 +793,8 @@ function prepRender(pedidos){
     <div class="prep-subslab"><i class="ti ti-stack-2"></i> Palets · etiquetar y cargar</div>
     <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Kgs</th><th class="prep-r">m³</th><th class="prep-r">Bultos</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${paletRows}</tbody>
     <tfoot><tr><td></td><td>Total palets material</td><td class="prep-r">—</td><td class="prep-r">${nf(tot.kgs)}</td><td class="prep-r">${nf(tot.m3,2)}</td><td class="prep-r">${tot.palet} PAL + ${tot.mini} MINI</td><td class="prep-r"></td></tr></tfoot></table>
-    ${bultoProds.length?`<div class="prep-subslab b"><i class="ti ti-package"></i> Bultos · van enfardados (no se sacan en palet)</div>
-    <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Bultos</th><th class="prep-r">Kgs</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${bultoRows}</tbody></table>`:''}
+    ${bultoProds.length?`<div class="prep-subslab b"><i class="ti ti-package"></i> Bultos</div>
+    <table class="prep-resumen"><thead><tr><th>Código</th><th>Producto</th><th class="prep-r">Cantidad</th><th class="prep-r">Bultos</th><th class="prep-r">Kgs</th><th class="prep-r">Pedidos</th></tr></thead><tbody>${bultoRows}</tbody><tfoot><tr><td></td><td style="font-weight:700;border-top:2px solid var(--border2)">Total bultos</td><td class="prep-r prep-b" style="border-top:2px solid var(--border2)">${nf(bCant)}</td><td class="prep-r prep-b" style="border-top:2px solid var(--border2)">${nbf(totBultos)}</td><td class="prep-r prep-b" style="border-top:2px solid var(--border2)">${nf(bKgs)}</td><td style="border-top:2px solid var(--border2)"></td></tr></tfoot></table>`:''}
     <div class="prep-slab">Montaje · cómo se carga</div>
     <div class="prep-montaje">
       <div class="prep-mcard"><div class="mn">${totSueltos}<span>+ ${tot.mini} mini</span></div><div class="ml">Palets sueltos · etiquetar</div></div>
@@ -770,7 +804,7 @@ function prepRender(pedidos){
     </div>
     ${nEnf?`<table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Palet base + bultos a enfardar encima</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${enfRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;border-top:1px solid #f0d9a8">Total bultos enfardados</td><td class="prep-r prep-b" style="border-top:1px solid #f0d9a8">${nbf(totBultosEnf)}</td></tr></tfoot></table>`:''}
     ${nBS?`<div class="prep-subslab b" style="margin-top:14px"><i class="ti ti-packages"></i> Bultos sueltos · pedidos sin palet (cargar aparte)</div>
-    <table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Bultos a cargar sueltos</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${bsRows}</tbody></table>`:''}
+    <table class="prep-enftab"><thead><tr><th>Ref. Leroy Merlin</th><th>Tienda</th><th>Bultos a cargar sueltos</th><th class="prep-r">Nº bultos</th></tr></thead><tbody>${bsRows}</tbody><tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;border-top:1px solid #cfe4f2">Total bultos sueltos</td><td class="prep-r prep-b" style="border-top:1px solid #cfe4f2">${nbf(totBultosSueltos)}</td></tr></tfoot></table>`:''}
     <div class="prep-total"><span>A cargar en el camión</span><span><b>${tot.palet} palets</b>${tot.mini?` + ${tot.mini} mini`:''} <span class="muted">(${totSueltos} sueltos + ${totEnf} enfardados${tot.mini?` + ${tot.mini} mini`:''}) · ${nbf(totBultos)} bultos · ${nf(tot.kgs)} kg</span></span></div>
     <div class="prep-slab">Preparación por pedido · revisar uno a uno</div>${seccionesPed}
   </div>`;
@@ -896,6 +930,73 @@ async function prepDescargarPDF(){
     doc.save('Planilla preparacion '+hoy+'.pdf');
     log('PDF descargado');
   }catch(e){ log('Error generando PDF: '+e.message); }
+}
+
+// ── PREPARACIONES GUARDADAS ──────────────────────────────────────────────────
+async function prepGuardar(){
+  if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
+  const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
+  const bultosDe=l=>{const u=prepConv[l.codigo];return u>0?l.cantidad/u:l.cantidad;};
+  let palets=0,bultos=0;
+  prepPedidos.forEach(o=>{o.lineas.forEach(l=>{palets+=l.palet;});bultos+=o.lineas.filter(l=>!esSaco(l)).reduce((s,l)=>s+bultosDe(l),0);});
+  const fields=prepFields();
+  const manual=(document.getElementById('prep-save-name').value||'').trim();
+  const nombre=manual||('Preparación '+new Date().toLocaleDateString('es-ES')+(fields.fentrega?' · entrega '+fields.fentrega:''));
+  const resumen=prepPedidos.length+' pedidos · '+palets+' palets · '+(Math.round(bultos*100)/100)+' bultos';
+  const pedidos=prepPedidos.map(o=>({pedido:o.pedido,docExt:o.docExt,tienda:o.tienda,fecha:o.fecha,cliente:o.cliente,destino:o.destino,lineas:o.lineas}));
+  try{
+    await api('POST','/preparaciones',{nombre,resumen,num_pedidos:prepPedidos.length,datos:{pedidos,albaranes:prepAlbaranes,fields}});
+    document.getElementById('prep-save-name').value='';
+    log('Preparación guardada: '+nombre);
+    prepCargarGuardadas();
+  }catch(e){ log('Error guardando: '+e.message); }
+}
+async function prepCargarGuardadas(){
+  const el=document.getElementById('prep-guardadas-list');
+  if(!el)return;
+  try{
+    const data=await api('GET','/preparaciones');
+    if(!data.length){ el.innerHTML='<div class="empty" style="padding:24px"><i class="ti ti-archive"></i>No hay preparaciones guardadas todavía</div>'; return; }
+    el.innerHTML='<table class="lineas-table"><thead><tr><th>Guardada</th><th>Nombre</th><th>Resumen</th><th></th></tr></thead><tbody>'+
+      data.map(p=>`<tr>
+        <td style="white-space:nowrap;color:var(--text2)">${new Date(p.created_at).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+        <td style="font-weight:600">${p.nombre||'—'}</td>
+        <td style="color:var(--text2)">${p.resumen||'—'}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-primary btn-sm" onclick="prepRescatar(${p.id})"><i class="ti ti-archive-off"></i> Rescatar</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="prepBorrarGuardada(${p.id})"><i class="ti ti-trash"></i></button>
+        </td>
+      </tr>`).join('')+'</tbody></table>';
+  }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando preparaciones</div>'; }
+}
+async function prepRescatar(id){
+  log('Rescatando preparación...');
+  try{
+    const rec=await api('GET','/preparaciones/'+id);
+    const d=rec.datos||{};
+    prepPedidos=d.pedidos||[];
+    prepAlbaranes=d.albaranes||{};
+    const f=d.fields||{};
+    const setv=(i,v)=>{const el=document.getElementById(i);if(el)el.value=v||'';};
+    setv('prep-f-matricula',f.matricula);setv('prep-f-fcarga',f.fcarga);setv('prep-f-fentrega',f.fentrega);
+    setv('prep-f-hora',f.hora);setv('prep-f-cita',f.cita);setv('prep-f-entrega',f.entrega);
+    await prepCargarConversiones();
+    prepRender(prepPedidos);
+    document.getElementById('prep-info').textContent=prepPedidos.length+' pedidos · rescatada';
+    document.getElementById('prep-print-btn').style.display='inline-flex';
+    document.getElementById('prep-pdf-btn').style.display='inline-flex';
+    document.getElementById('prep-save-btn').style.display='inline-flex';
+    document.getElementById('prep-save-name').style.display='inline-block';
+    const nAlb=Object.keys(prepAlbaranes||{}).length;
+    if(nAlb){ const ai=document.getElementById('prep-alb-info'); ai.style.color='var(--green)'; ai.textContent='✓ '+nAlb+' albaranes (rescatados)'; }
+    window.scrollTo({top:0,behavior:'smooth'});
+    log('Preparación rescatada');
+  }catch(e){ log('Error rescatando: '+e.message); }
+}
+async function prepBorrarGuardada(id){
+  if(!confirm('¿Eliminar esta preparación guardada?'))return;
+  try{ await api('DELETE','/preparaciones/'+id); prepCargarGuardadas(); log('Preparación eliminada'); }
+  catch(e){ log('Error'); }
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
