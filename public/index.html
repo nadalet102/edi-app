@@ -311,7 +311,13 @@ const api = async (method, path, body) => {
     method, headers:{'Content-Type':'application/json'},
     body: body ? JSON.stringify(body) : undefined
   });
-  const data = await r.json();
+  const txt = await r.text();
+  let data;
+  try { data = txt ? JSON.parse(txt) : {}; }
+  catch(_) {
+    if(!r.ok && (r.status===404 || r.status===405)) throw new Error('Ruta '+path+' no encontrada ('+r.status+'). ¿Has subido el server.js nuevo?');
+    throw new Error('Respuesta no válida del servidor ('+r.status+')');
+  }
   if(!r.ok) throw new Error(data.error || 'Error '+r.status);
   return data;
 };
