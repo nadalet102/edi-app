@@ -374,6 +374,7 @@ textarea:focus{border-color:var(--blue)}
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn btn-primary" id="cal-f-guardar" onclick="calGuardar()"><i class="ti ti-device-floppy"></i> Guardar</button>
+      <button class="btn btn-outline" id="cal-f-abrir-prep" style="display:none"><i class="ti ti-clipboard-check"></i> Abrir preparación</button>
       <button class="btn btn-outline" id="cal-f-borrar" onclick="calBorrar()" style="display:none;color:var(--red);border-color:var(--red)"><i class="ti ti-trash"></i> Eliminar</button>
     </div>
   </div>
@@ -1054,11 +1055,31 @@ async function prepGuardar(){
   const resumen=prepPedidos.length+' pedidos · '+palets+' palets · '+(Math.round(bultos*100)/100)+' bultos';
   const pedidos=prepPedidos.map(o=>({pedido:o.pedido,docExt:o.docExt,tienda:o.tienda,fecha:o.fecha,cliente:o.cliente,destino:o.destino,lineas:o.lineas}));
   try{
-    await api('POST','/preparaciones',{nombre,resumen,num_pedidos:prepPedidos.length,datos:{pedidos,albaranes:prepAlbaranes,fields}});
+    const rec=await api('POST','/preparaciones',{nombre,resumen,num_pedidos:prepPedidos.length,datos:{pedidos,albaranes:prepAlbaranes,fields}});
     document.getElementById('prep-save-name').value='';
-    log('Preparación guardada: '+nombre);
+    // Conectar con el calendario: crear la carga en la fecha de carga
+    const fechaCarga=parseFechaES(fields.fcarga);
+    if(fechaCarga){
+      const notas=[fields.fentrega?'Entrega '+fields.fentrega:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
+      try{
+        await api('POST','/cargas',{fecha:fechaCarga,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:rec.id});
+        log('Preparación guardada y añadida al calendario ('+fields.fcarga+(fields.cita?' · con cita':' · sin cita')+')');
+      }catch(e){ log('Preparación guardada (no se pudo añadir al calendario: '+e.message+')'); }
+    } else {
+      log('Preparación guardada'+(fields.fcarga?' · fecha de carga no válida (dd/mm/aa), no añadida al calendario':' · sin F. Carga, no añadida al calendario'));
+    }
     prepCargarGuardadas();
   }catch(e){ log('Error guardando: '+e.message); }
+}
+// Convierte "dd/mm/aa" o "dd/mm/aaaa" → "YYYY-MM-DD" (o null si no es válida)
+function parseFechaES(s){
+  if(!s)return null;
+  const m=String(s).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(!m)return null;
+  let d=+m[1], mo=+m[2], y=+m[3];
+  if(y<100)y+=2000;
+  if(mo<1||mo>12||d<1||d>31)return null;
+  return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
 }
 async function prepCargarGuardadas(){
   const el=document.getElementById('prep-guardadas-list');
@@ -1138,7 +1159,7 @@ async function calRender(){
     const evs=(porDia[iso]||[]).map(c=>{
       const cls=c.hecha?'hecha':(c.cita?'cita':'sin');
       const tag=c.hecha?'':(c.cita?'<span class="ev-tag">cita</span>':'<span class="ev-tag">sin cita</span>');
-      return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${tag}</div>`;
+      return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${c.prep_id?' <i class="ti ti-clipboard-check" title="Preparación vinculada"></i>':''}${tag}</div>`;
     }).join('');
     cells+=`<div class="cal-dia${fuera?' fuera':''}${iso===hoyISO?' hoy':''}${finde?' finde':''}" onclick="calNueva('${iso}')"><div class="cal-dnum">${d.getDate()}</div>${evs}</div>`;
   }
@@ -1155,6 +1176,7 @@ function calNueva(iso){
   document.getElementById('cal-f-hecha').checked=false;
   document.getElementById('cal-f-notas').value='';
   document.getElementById('cal-f-borrar').style.display='none';
+  document.getElementById('cal-f-abrir-prep').style.display='none';
   document.getElementById('cal-form-card').style.display='block';
   document.getElementById('cal-f-titulo').focus();
 }
@@ -1170,8 +1192,12 @@ function calEditar(id){
   document.getElementById('cal-f-hecha').checked=!!c.hecha;
   document.getElementById('cal-f-notas').value=c.notas||'';
   document.getElementById('cal-f-borrar').style.display='inline-flex';
+  const ab=document.getElementById('cal-f-abrir-prep');
+  if(c.prep_id){ ab.style.display='inline-flex'; ab.onclick=()=>calAbrirPrep(c.prep_id); }
+  else { ab.style.display='none'; ab.onclick=null; }
   document.getElementById('cal-form-card').style.display='block';
 }
+function calAbrirPrep(id){ switchTab('prep'); prepRescatar(id); }
 function calCerrarForm(){ document.getElementById('cal-form-card').style.display='none'; calEditId=null; }
 async function calGuardar(){
   const body={
