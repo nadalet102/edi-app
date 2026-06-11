@@ -151,9 +151,13 @@ async function initDB(){
       notas TEXT,
       hecha BOOLEAN DEFAULT FALSE,
       prep_id INTEGER,
+      num_pedidos INTEGER DEFAULT 0,
+      tiene_albaranes BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
-    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS prep_id INTEGER`
+    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS prep_id INTEGER`,
+    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS num_pedidos INTEGER DEFAULT 0`,
+    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS tiene_albaranes BOOLEAN DEFAULT FALSE`
   ];
   for(const sql of stmts){
     try { await pool.query(sql); } catch(e) { console.warn('initDB:', e.message); }
@@ -517,26 +521,26 @@ app.get('/api/cargas', async (req, res) => {
 });
 // POST /api/cargas — crear
 app.post('/api/cargas', async (req, res) => {
-  const {fecha, titulo, cita, hora, notas, prep_id} = req.body;
+  const {fecha, titulo, cita, hora, notas, prep_id, num_pedidos, tiene_albaranes} = req.body;
   if(!fecha || !titulo) return res.status(400).json({error:'Faltan fecha o título'});
   try {
     const r = await pool.query(
-      'INSERT INTO cal_cargas (fecha,titulo,cita,hora,notas,prep_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-      [fecha, titulo, !!cita, hora||null, notas||null, prep_id||null]
+      'INSERT INTO cal_cargas (fecha,titulo,cita,hora,notas,prep_id,num_pedidos,tiene_albaranes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [fecha, titulo, !!cita, hora||null, notas||null, prep_id||null, num_pedidos||0, !!tiene_albaranes]
     );
     res.json(r.rows[0]);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 // PUT /api/cargas/:id — actualizar (campos opcionales)
 app.put('/api/cargas/:id', async (req, res) => {
-  const {fecha, titulo, cita, hora, notas, hecha} = req.body;
+  const {fecha, titulo, cita, hora, notas, hecha, prep_id, num_pedidos, tiene_albaranes} = req.body;
   try {
     const cur = await pool.query('SELECT * FROM cal_cargas WHERE id=$1',[req.params.id]);
     if(!cur.rows.length) return res.status(404).json({error:'No encontrada'});
     const c = cur.rows[0];
     const r = await pool.query(
-      'UPDATE cal_cargas SET fecha=$1,titulo=$2,cita=$3,hora=$4,notas=$5,hecha=$6 WHERE id=$7 RETURNING *',
-      [fecha??c.fecha, titulo??c.titulo, (cita===undefined?c.cita:!!cita), (hora===undefined?c.hora:hora||null), (notas===undefined?c.notas:notas||null), (hecha===undefined?c.hecha:!!hecha), req.params.id]
+      'UPDATE cal_cargas SET fecha=$1,titulo=$2,cita=$3,hora=$4,notas=$5,hecha=$6,prep_id=$7,num_pedidos=$8,tiene_albaranes=$9 WHERE id=$10 RETURNING *',
+      [fecha??c.fecha, titulo??c.titulo, (cita===undefined?c.cita:!!cita), (hora===undefined?c.hora:hora||null), (notas===undefined?c.notas:notas||null), (hecha===undefined?c.hecha:!!hecha), (prep_id===undefined?c.prep_id:prep_id||null), (num_pedidos===undefined?c.num_pedidos:num_pedidos||0), (tiene_albaranes===undefined?c.tiene_albaranes:!!tiene_albaranes), req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e){ res.status(500).json({error:e.message}); }
