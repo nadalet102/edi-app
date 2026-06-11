@@ -305,8 +305,9 @@ textarea:focus{border-color:var(--blue)}
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
-        <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="display:none;padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
-        <button class="btn btn-outline" id="prep-save-btn" onclick="prepGuardar()" style="display:none"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
+        <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
+        <button class="btn btn-primary" id="prep-save-btn" onclick="prepGuardar()"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
+        <button class="btn btn-outline" id="prep-nueva-btn" onclick="prepNueva()" style="display:none"><i class="ti ti-plus"></i> Nueva</button>
         <span id="prep-info" style="font-size:12px;color:var(--text2)"></span>
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
@@ -707,6 +708,7 @@ const PREP_COL = {desc:57,cant:183,kgs:308,m3:352,emb:376,precio:421,importe:502
 let prepConv = {}; // codigo -> uds por bulto
 let prepPedidos = []; // pedidos parseados del último PDF (para el Excel)
 let prepAlbaranes = {}; // ref Leroy (normalizada) -> nº albarán AV
+let prepCurrentId = null; // id de la preparación que se está editando (null = nueva)
 async function prepCargarConversiones(){
   try{ const cv=await api('GET','/conversiones'); prepConv={}; cv.forEach(c=>prepConv[c.codigo]=+c.uds_por_bulto); }
   catch(e){ prepConv={}; }
@@ -782,9 +784,8 @@ async function prepCargar(file){
     document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
     document.getElementById('prep-print-btn').style.display='inline-flex';
     document.getElementById('prep-pdf-btn').style.display='inline-flex';
-    document.getElementById('prep-save-btn').style.display='inline-flex';
-    document.getElementById('prep-save-name').style.display='inline-block';
-    log(pedidos.length+' pedidos procesados para preparación');
+    prepUpdateSaveUI();
+    log(pedidos.length+' pedidos procesados para preparación'+(prepCurrentId?' · se actualizará la preparación rescatada al guardar':''));
   }catch(e){
     document.getElementById('prep-print').innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i>'+e.message+'</div>';
     document.getElementById('prep-info').textContent='';
@@ -1044,32 +1045,68 @@ async function prepDescargarPDF(){
 
 // ── PREPARACIONES GUARDADAS ──────────────────────────────────────────────────
 async function prepGuardar(){
-  if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
+  const fields=prepFields();
+  const manual=(document.getElementById('prep-save-name').value||'').trim();
+  if(!prepPedidos.length && !manual && !fields.fcarga){ log('Para guardar pon al menos un nombre o una fecha de carga, o sube el PDF'); return; }
   const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
   const bultosDe=l=>{const u=prepConv[l.codigo];return u>0?l.cantidad/u:l.cantidad;};
   let palets=0,bultos=0;
   prepPedidos.forEach(o=>{o.lineas.forEach(l=>{palets+=l.palet;});bultos+=o.lineas.filter(l=>!esSaco(l)).reduce((s,l)=>s+bultosDe(l),0);});
-  const fields=prepFields();
-  const manual=(document.getElementById('prep-save-name').value||'').trim();
-  const nombre=manual||('Preparación '+new Date().toLocaleDateString('es-ES')+(fields.fentrega?' · entrega '+fields.fentrega:''));
-  const resumen=prepPedidos.length+' pedidos · '+palets+' palets · '+(Math.round(bultos*100)/100)+' bultos';
+  const nombre=manual||(prepPedidos.length
+    ?('Preparación '+new Date().toLocaleDateString('es-ES')+(fields.fentrega?' · entrega '+fields.fentrega:''))
+    :('Carga '+(fields.fcarga||new Date().toLocaleDateString('es-ES'))+(fields.fentrega?' · entrega '+fields.fentrega:'')));
+  const resumen=prepPedidos.length
+    ?(prepPedidos.length+' pedidos · '+palets+' palets · '+(Math.round(bultos*100)/100)+' bultos')
+    :'Guía · pendiente de añadir pedidos';
   const pedidos=prepPedidos.map(o=>({pedido:o.pedido,docExt:o.docExt,tienda:o.tienda,fecha:o.fecha,cliente:o.cliente,destino:o.destino,lineas:o.lineas}));
+  const datos={pedidos,albaranes:prepAlbaranes,fields};
   try{
-    const rec=await api('POST','/preparaciones',{nombre,resumen,num_pedidos:prepPedidos.length,datos:{pedidos,albaranes:prepAlbaranes,fields}});
-    document.getElementById('prep-save-name').value='';
-    // Conectar con el calendario: crear la carga en la fecha de carga
-    const fechaCarga=parseFechaES(fields.fcarga);
-    if(fechaCarga){
-      const notas=[fields.fentrega?'Entrega '+fields.fentrega:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
-      try{
-        await api('POST','/cargas',{fecha:fechaCarga,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:rec.id});
-        log('Preparación guardada y añadida al calendario ('+fields.fcarga+(fields.cita?' · con cita':' · sin cita')+')');
-      }catch(e){ log('Preparación guardada (no se pudo añadir al calendario: '+e.message+')'); }
+    if(prepCurrentId){
+      await api('PUT','/preparaciones/'+prepCurrentId,{nombre,resumen,num_pedidos:prepPedidos.length,datos});
     } else {
-      log('Preparación guardada'+(fields.fcarga?' · fecha de carga no válida (dd/mm/aa), no añadida al calendario':' · sin F. Carga, no añadida al calendario'));
+      const rec=await api('POST','/preparaciones',{nombre,resumen,num_pedidos:prepPedidos.length,datos});
+      prepCurrentId=rec.id;
     }
+    document.getElementById('prep-save-name').value='';
+    const cal=await prepSyncCarga(prepCurrentId, nombre, fields);
+    const guia=prepPedidos.length?'':' (guía sin pedidos)';
+    if(cal==='nueva') log('Preparación guardada'+guia+' y añadida al calendario ('+fields.fcarga+(fields.cita?' · con cita':' · sin cita')+')');
+    else if(cal==='update') log('Preparación y carga del calendario actualizadas'+guia);
+    else log('Preparación guardada'+guia+(fields.fcarga?' · fecha de carga no válida, no añadida al calendario':' · sin F. Carga, no añadida al calendario'));
+    prepUpdateSaveUI();
     prepCargarGuardadas();
   }catch(e){ log('Error guardando: '+e.message); }
+}
+// Crea o actualiza (sin duplicar) la carga del calendario vinculada a la preparación
+async function prepSyncCarga(prepId, nombre, fields){
+  const fecha=parseFechaES(fields.fcarga);
+  if(!fecha) return 'sinfecha';
+  const notas=[fields.fentrega?'Entrega '+fields.fentrega:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
+  const body={fecha,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:prepId};
+  try{
+    const cargas=await api('GET','/cargas').catch(()=>[]);
+    const ex=(cargas||[]).find(c=>c.prep_id===prepId);
+    if(ex){ await api('PUT','/cargas/'+ex.id,body); return 'update'; }
+    await api('POST','/cargas',body); return 'nueva';
+  }catch(e){ return 'error'; }
+}
+function prepUpdateSaveUI(){
+  const editing=!!prepCurrentId;
+  const b=document.getElementById('prep-save-btn');
+  if(b) b.innerHTML='<i class="ti ti-device-floppy"></i> '+(editing?'Actualizar preparación':'Guardar preparación');
+  const n=document.getElementById('prep-nueva-btn');
+  if(n) n.style.display=editing?'inline-flex':'none';
+}
+function prepNueva(){
+  prepCurrentId=null;
+  prepPedidos=[]; prepAlbaranes={};
+  ['prep-f-matricula','prep-f-fcarga','prep-f-fentrega','prep-f-hora','prep-f-cita','prep-f-entrega','prep-save-name'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  const ai=document.getElementById('prep-alb-info'); if(ai){ai.textContent='';}
+  document.getElementById('prep-print').innerHTML='';
+  document.getElementById('prep-info').textContent='';
+  ['prep-print-btn','prep-pdf-btn'].forEach(i=>document.getElementById(i).style.display='none');
+  prepUpdateSaveUI();
+  log('Nueva preparación en blanco');
 }
 // Convierte "dd/mm/aa" o "dd/mm/aaaa" → "YYYY-MM-DD" (o null si no es válida)
 function parseFechaES(s){
@@ -1105,17 +1142,15 @@ async function prepAlCalendario(id){
   log('Añadiendo al calendario...');
   try{
     const rec=await api('GET','/preparaciones/'+id);
-    const f=(rec.datos&&rec.datos.fields)||{};
-    let fecha=parseFechaES(f.fcarga);
-    if(!fecha){
+    const f=Object.assign({}, (rec.datos&&rec.datos.fields)||{});
+    if(!parseFechaES(f.fcarga)){
       const inp=prompt('Esta preparación no tiene fecha de carga válida.\nEscribe la fecha de carga (dd/mm/aaaa):', f.fcarga||'');
       if(inp===null)return;
-      fecha=parseFechaES(inp);
-      if(!fecha){ log('Fecha no válida, escríbela como dd/mm/aaaa'); return; }
+      if(!parseFechaES(inp)){ log('Fecha no válida, escríbela como dd/mm/aaaa'); return; }
+      f.fcarga=inp;
     }
-    const notas=[f.fentrega?'Entrega '+f.fentrega:'',f.matricula?'Matrícula '+f.matricula:'',f.cita?'Cita '+f.cita:''].filter(Boolean).join(' · ');
-    await api('POST','/cargas',{fecha,titulo:rec.nombre||('Preparación '+id),cita:!!f.cita,hora:f.hora,notas,prep_id:id});
-    log('Añadida al calendario ('+fecha.split('-').reverse().join('/')+(f.cita?' · con cita':' · sin cita')+')');
+    const r=await prepSyncCarga(id, rec.nombre||('Preparación '+id), f);
+    log(r==='update'?'Carga del calendario actualizada':('Añadida al calendario ('+f.fcarga+(f.cita?' · con cita':' · sin cita')+')'));
     prepCargarGuardadas();
   }catch(e){ log('Error añadiendo al calendario: '+e.message); }
 }
@@ -1124,6 +1159,7 @@ async function prepRescatar(id){
   try{
     const rec=await api('GET','/preparaciones/'+id);
     const d=rec.datos||{};
+    prepCurrentId=id;
     prepPedidos=d.pedidos||[];
     prepAlbaranes=d.albaranes||{};
     const f=d.fields||{};
@@ -1131,17 +1167,35 @@ async function prepRescatar(id){
     setv('prep-f-matricula',f.matricula);setv('prep-f-fcarga',f.fcarga);setv('prep-f-fentrega',f.fentrega);
     setv('prep-f-hora',f.hora);setv('prep-f-cita',f.cita);setv('prep-f-entrega',f.entrega);
     await prepCargarConversiones();
-    prepRender(prepPedidos);
-    document.getElementById('prep-info').textContent=prepPedidos.length+' pedidos · rescatada';
-    document.getElementById('prep-print-btn').style.display='inline-flex';
-    document.getElementById('prep-pdf-btn').style.display='inline-flex';
-    document.getElementById('prep-save-btn').style.display='inline-flex';
-    document.getElementById('prep-save-name').style.display='inline-block';
+    if(prepPedidos.length){
+      prepRender(prepPedidos);
+      document.getElementById('prep-info').textContent=prepPedidos.length+' pedidos · rescatada';
+      document.getElementById('prep-print-btn').style.display='inline-flex';
+      document.getElementById('prep-pdf-btn').style.display='inline-flex';
+    } else {
+      prepRenderVacia(f);
+      document.getElementById('prep-info').textContent='Guía rescatada · sube el PDF para añadir los pedidos';
+      document.getElementById('prep-print-btn').style.display='none';
+      document.getElementById('prep-pdf-btn').style.display='none';
+    }
+    prepUpdateSaveUI();
     const nAlb=Object.keys(prepAlbaranes||{}).length;
     if(nAlb){ const ai=document.getElementById('prep-alb-info'); ai.style.color='var(--green)'; ai.textContent='✓ '+nAlb+' albaranes (rescatados)'; }
     window.scrollTo({top:0,behavior:'smooth'});
-    log('Preparación rescatada');
+    log('Preparación rescatada'+(prepPedidos.length?'':' (guía, sin pedidos)'));
   }catch(e){ log('Error rescatando: '+e.message); }
+}
+// Hoja en blanco (guía) con solo la cabecera de fechas
+function prepRenderVacia(f){
+  f=f||prepFields();
+  document.getElementById('prep-print').innerHTML=`<div class="card" style="padding:26px 28px">
+    <div class="prep-top"><div><div class="prep-title">Hoja de preparación · Camión</div><div class="prep-dest">Guía sin pedidos</div><div class="prep-sub">Pendiente de añadir pedidos · sube el PDF de preparación</div></div></div>
+    <div class="prep-fechas">
+      <div class="prep-fbox carga"><div class="fl"><i class="ti ti-truck-loading"></i> Fecha de carga</div><div class="fd" id="hoja-fcarga">${f.fcarga||'—'}</div></div>
+      <div class="prep-fbox entrega"><div class="fl"><i class="ti ti-flag-check"></i> Fecha de entrega / descarga</div><div class="fd" id="hoja-fentrega">${f.fentrega||'—'}</div></div>
+    </div>
+    <div class="empty" style="padding:30px"><i class="ti ti-file-upload"></i>Esta preparación es una guía. Sube el PDF arriba para añadir los pedidos y luego pulsa "Actualizar preparación".</div>
+  </div>`;
 }
 async function prepBorrarGuardada(id){
   if(!confirm('¿Eliminar esta preparación guardada?'))return;
