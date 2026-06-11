@@ -150,8 +150,10 @@ async function initDB(){
       hora TEXT,
       notas TEXT,
       hecha BOOLEAN DEFAULT FALSE,
+      prep_id INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    )`
+    )`,
+    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS prep_id INTEGER`
   ];
   for(const sql of stmts){
     try { await pool.query(sql); } catch(e) { console.warn('initDB:', e.message); }
@@ -501,12 +503,12 @@ app.get('/api/cargas', async (req, res) => {
 });
 // POST /api/cargas — crear
 app.post('/api/cargas', async (req, res) => {
-  const {fecha, titulo, cita, hora, notas} = req.body;
+  const {fecha, titulo, cita, hora, notas, prep_id} = req.body;
   if(!fecha || !titulo) return res.status(400).json({error:'Faltan fecha o título'});
   try {
     const r = await pool.query(
-      'INSERT INTO cal_cargas (fecha,titulo,cita,hora,notas) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [fecha, titulo, !!cita, hora||null, notas||null]
+      'INSERT INTO cal_cargas (fecha,titulo,cita,hora,notas,prep_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [fecha, titulo, !!cita, hora||null, notas||null, prep_id||null]
     );
     res.json(r.rows[0]);
   } catch(e){ res.status(500).json({error:e.message}); }
