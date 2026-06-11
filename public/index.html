@@ -1047,7 +1047,7 @@ async function prepDescargarPDF(){
 async function prepGuardar(){
   const fields=prepFields();
   const manual=(document.getElementById('prep-save-name').value||'').trim();
-  if(!prepPedidos.length && !manual && !fields.fcarga){ log('Para guardar pon al menos un nombre o una fecha de carga, o sube el PDF'); return; }
+  if(!prepPedidos.length && !manual && !fields.fentrega && !fields.fcarga){ log('Para guardar pon al menos un nombre o una fecha de entrega, o sube el PDF'); return; }
   const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
   const bultosDe=l=>{const u=prepConv[l.codigo];return u>0?l.cantidad/u:l.cantidad;};
   let palets=0,bultos=0;
@@ -1070,18 +1070,18 @@ async function prepGuardar(){
     document.getElementById('prep-save-name').value='';
     const cal=await prepSyncCarga(prepCurrentId, nombre, fields);
     const guia=prepPedidos.length?'':' (guía sin pedidos)';
-    if(cal==='nueva') log('Preparación guardada'+guia+' y añadida al calendario ('+fields.fcarga+(fields.cita?' · con cita':' · sin cita')+')');
+    if(cal==='nueva') log('Preparación guardada'+guia+' y añadida al calendario el día de entrega ('+fields.fentrega+(fields.cita?' · con cita':' · sin cita')+')');
     else if(cal==='update') log('Preparación y carga del calendario actualizadas'+guia);
-    else log('Preparación guardada'+guia+(fields.fcarga?' · fecha de carga no válida, no añadida al calendario':' · sin F. Carga, no añadida al calendario'));
+    else log('Preparación guardada'+guia+(fields.fentrega?' · fecha de entrega no válida, no añadida al calendario':' · sin F. Entrega, no añadida al calendario'));
     prepUpdateSaveUI();
     prepCargarGuardadas();
   }catch(e){ log('Error guardando: '+e.message); }
 }
 // Crea o actualiza (sin duplicar) la carga del calendario vinculada a la preparación
 async function prepSyncCarga(prepId, nombre, fields){
-  const fecha=parseFechaES(fields.fcarga);
+  const fecha=parseFechaES(fields.fentrega);   // el calendario se posiciona por la fecha de ENTREGA
   if(!fecha) return 'sinfecha';
-  const notas=[fields.fentrega?'Entrega '+fields.fentrega:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
+  const notas=[fields.fcarga?'Carga '+fields.fcarga:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
   const body={fecha,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:prepId};
   try{
     const cargas=await api('GET','/cargas').catch(()=>[]);
@@ -1143,14 +1143,14 @@ async function prepAlCalendario(id){
   try{
     const rec=await api('GET','/preparaciones/'+id);
     const f=Object.assign({}, (rec.datos&&rec.datos.fields)||{});
-    if(!parseFechaES(f.fcarga)){
-      const inp=prompt('Esta preparación no tiene fecha de carga válida.\nEscribe la fecha de carga (dd/mm/aaaa):', f.fcarga||'');
+    if(!parseFechaES(f.fentrega)){
+      const inp=prompt('Esta preparación no tiene fecha de entrega válida.\nEscribe la fecha de entrega (dd/mm/aaaa):', f.fentrega||'');
       if(inp===null)return;
       if(!parseFechaES(inp)){ log('Fecha no válida, escríbela como dd/mm/aaaa'); return; }
-      f.fcarga=inp;
+      f.fentrega=inp;
     }
     const r=await prepSyncCarga(id, rec.nombre||('Preparación '+id), f);
-    log(r==='update'?'Carga del calendario actualizada':('Añadida al calendario ('+f.fcarga+(f.cita?' · con cita':' · sin cita')+')'));
+    log(r==='update'?'Carga del calendario actualizada':('Añadida al calendario el día de entrega ('+f.fentrega+(f.cita?' · con cita':' · sin cita')+')'));
     prepCargarGuardadas();
   }catch(e){ log('Error añadiendo al calendario: '+e.message); }
 }
