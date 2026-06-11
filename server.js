@@ -141,6 +141,16 @@ async function initDB(){
       num_pedidos INTEGER,
       datos JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS cal_cargas (
+      id SERIAL PRIMARY KEY,
+      fecha DATE NOT NULL,
+      titulo TEXT NOT NULL,
+      cita BOOLEAN DEFAULT FALSE,
+      hora TEXT,
+      notas TEXT,
+      hecha BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )`
   ];
   for(const sql of stmts){
@@ -475,6 +485,49 @@ app.post('/api/preparaciones', async (req, res) => {
 // DELETE /api/preparaciones/:id
 app.delete('/api/preparaciones/:id', async (req, res) => {
   try { await pool.query('DELETE FROM preparaciones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+
+// ── CALENDARIO DE CARGAS ─────────────────────────────────────────────────────
+// GET /api/cargas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+app.get('/api/cargas', async (req, res) => {
+  const {desde, hasta} = req.query;
+  try {
+    let r;
+    if(desde && hasta) r = await pool.query('SELECT * FROM cal_cargas WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha, hora NULLS LAST, id', [desde, hasta]);
+    else r = await pool.query('SELECT * FROM cal_cargas ORDER BY fecha DESC, id LIMIT 500');
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+// POST /api/cargas — crear
+app.post('/api/cargas', async (req, res) => {
+  const {fecha, titulo, cita, hora, notas} = req.body;
+  if(!fecha || !titulo) return res.status(400).json({error:'Faltan fecha o título'});
+  try {
+    const r = await pool.query(
+      'INSERT INTO cal_cargas (fecha,titulo,cita,hora,notas) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [fecha, titulo, !!cita, hora||null, notas||null]
+    );
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+// PUT /api/cargas/:id — actualizar (campos opcionales)
+app.put('/api/cargas/:id', async (req, res) => {
+  const {fecha, titulo, cita, hora, notas, hecha} = req.body;
+  try {
+    const cur = await pool.query('SELECT * FROM cal_cargas WHERE id=$1',[req.params.id]);
+    if(!cur.rows.length) return res.status(404).json({error:'No encontrada'});
+    const c = cur.rows[0];
+    const r = await pool.query(
+      'UPDATE cal_cargas SET fecha=$1,titulo=$2,cita=$3,hora=$4,notas=$5,hecha=$6 WHERE id=$7 RETURNING *',
+      [fecha??c.fecha, titulo??c.titulo, (cita===undefined?c.cita:!!cita), (hora===undefined?c.hora:hora||null), (notas===undefined?c.notas:notas||null), (hecha===undefined?c.hecha:!!hecha), req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+// DELETE /api/cargas/:id
+app.delete('/api/cargas/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM cal_cargas WHERE id=$1',[req.params.id]); res.json({ok:true}); }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 
