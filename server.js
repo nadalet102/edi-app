@@ -516,7 +516,16 @@ app.get('/api/cargas', async (req, res) => {
     let r;
     if(desde && hasta) r = await pool.query('SELECT * FROM cal_cargas WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha, hora NULLS LAST, id', [desde, hasta]);
     else r = await pool.query('SELECT * FROM cal_cargas ORDER BY fecha DESC, id LIMIT 500');
-    res.json(r.rows);
+    const cargas = r.rows;
+    // Estado (pedidos/albaranes) calculado en vivo desde la preparación vinculada
+    const prepIds = [...new Set(cargas.filter(c=>c.prep_id).map(c=>Number(c.prep_id)).filter(Number.isInteger))];
+    if(prepIds.length){
+      const pr = await pool.query('SELECT id, datos FROM preparaciones WHERE id IN ('+prepIds.join(',')+')');
+      const map = {};
+      pr.rows.forEach(p=>{ const d=p.datos||{}; map[p.id] = {nped: Array.isArray(d.pedidos)?d.pedidos.length:0, talb: !!(d.albaranes && Object.keys(d.albaranes).length)}; });
+      cargas.forEach(c=>{ if(c.prep_id && map[c.prep_id]){ c.num_pedidos = map[c.prep_id].nped; c.tiene_albaranes = map[c.prep_id].talb; } });
+    }
+    res.json(cargas);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 // POST /api/cargas — crear
