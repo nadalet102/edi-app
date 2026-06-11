@@ -83,6 +83,31 @@ textarea:focus{border-color:var(--blue)}
 .hist-date{font-weight:700;color:var(--blue-d);font-size:13px;display:flex;align-items:center;gap:7px}
 .hist-meta{font-size:12px;color:var(--text2);font-weight:600}
 .hist-day table{margin:0}
+/* ── Calendario ── */
+.cal-leyenda{display:flex;gap:18px;align-items:center;font-size:12px;color:var(--text2);margin-bottom:12px;flex-wrap:wrap}
+.cal-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.cal-dot.cita{background:var(--green)}
+.cal-dot.sin{background:#d97706}
+.cal-dot.hecha{background:#9aa7b1}
+.cal-sem{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.cal-sem div{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center}
+.cal-mes{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-dia{min-height:96px;border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--surface2);cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:border-color .12s}
+.cal-dia:hover{border-color:var(--blue)}
+.cal-dia.fuera{opacity:.38;background:transparent}
+.cal-dia.hoy{border:2px solid var(--blue);background:#eaf2fb}
+.cal-dia.finde{background:#f3f4f6}
+.cal-dia.hoy.finde{background:#eaf2fb}
+.cal-dnum{font-size:12px;font-weight:700;color:var(--text2)}
+.cal-dia.hoy .cal-dnum{color:var(--blue-d)}
+.cal-ev{font-size:11px;line-height:1.25;padding:4px 6px;border-radius:6px;border-left:3px solid;font-weight:600;cursor:pointer;overflow:hidden}
+.cal-ev.cita{background:var(--green-l);border-color:var(--green);color:#1d5429}
+.cal-ev.sin{background:#fef3c7;border-color:#d97706;color:#92400e}
+.cal-ev.hecha{background:#eef1f3;border-color:#9aa7b1;color:#5b6770;text-decoration:line-through}
+.cal-ev .ev-h{font-weight:800}
+.cal-ev .ev-tag{display:inline-block;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:0 4px;border-radius:4px;margin-left:3px;vertical-align:1px}
+.cal-ev.cita .ev-tag{background:var(--green);color:#fff}
+.cal-ev.sin .ev-tag{background:#d97706;color:#fff}
 .empty i{font-size:32px;opacity:.3;display:block;margin-bottom:10px}
 /* PREPARACIÓN */
 .prep-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--blue-d);padding-bottom:12px}
@@ -185,6 +210,7 @@ textarea:focus{border-color:var(--blue)}
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial</div>
   <div class="tab" id="tab-unir" onclick="switchTab('unir')"><i class="ti ti-list-numbers"></i> Unir pedidos</div>
   <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
+  <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
 </div>
 
 <!-- IMPORTAR -->
@@ -311,6 +337,48 @@ textarea:focus{border-color:var(--blue)}
   <div id="prep-print"></div>
 </div>
 
+<div class="view" id="view-cal">
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-calendar"></i> Calendario de cargas</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn btn-outline btn-sm" onclick="calMes(-1)"><i class="ti ti-chevron-left"></i></button>
+        <span id="cal-mes-label" style="font-weight:700;min-width:150px;text-align:center;color:var(--blue-d)"></span>
+        <button class="btn btn-outline btn-sm" onclick="calMes(1)"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-outline btn-sm" onclick="calHoy()">Hoy</button>
+      </div>
+    </div>
+    <div class="cal-leyenda">
+      <span><span class="cal-dot cita"></span> Con cita</span>
+      <span><span class="cal-dot sin"></span> Sin cita</span>
+      <span><span class="cal-dot hecha"></span> Hecha</span>
+      <span style="color:var(--text3)">· Pulsa un día para añadir carga · pulsa una carga para editarla</span>
+    </div>
+    <div id="cal-grid"></div>
+  </div>
+
+  <div class="card" id="cal-form-card" style="display:none">
+    <div class="card-hdr">
+      <div class="card-title" id="cal-form-title"><i class="ti ti-truck"></i> Nueva carga</div>
+      <button class="btn btn-outline btn-sm" onclick="calCerrarForm()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="display:grid;grid-template-columns:140px 1fr 110px;gap:10px;align-items:end">
+      <label style="font-size:11px;color:var(--text2)">Fecha<input type="date" id="cal-f-fecha" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+      <label style="font-size:11px;color:var(--text2)">Carga (destino / camión)<input type="text" id="cal-f-titulo" placeholder="Ej: Camión RIBARROJA · 21 palets" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+      <label style="font-size:11px;color:var(--text2)">Hora (opcional)<input type="text" id="cal-f-hora" placeholder="08:00" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></label>
+    </div>
+    <div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="cal-f-cita" style="width:17px;height:17px;accent-color:var(--green)"> Tengo cita confirmada</label>
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" id="cal-f-hecha" style="width:17px;height:17px;accent-color:var(--blue)"> Carga hecha</label>
+      <input type="text" id="cal-f-notas" placeholder="Notas (cita ref, matrícula, transportista...)" style="flex:1;min-width:220px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-primary" id="cal-f-guardar" onclick="calGuardar()"><i class="ti ti-device-floppy"></i> Guardar</button>
+      <button class="btn btn-outline" id="cal-f-borrar" onclick="calBorrar()" style="display:none;color:var(--red);border-color:var(--red)"><i class="ti ti-trash"></i> Eliminar</button>
+    </div>
+  </div>
+</div>
+
 <div class="statusbar"><i class="ti ti-info-circle"></i><span id="sb-msg">Listo</span></div>
 
 <script>
@@ -336,13 +404,14 @@ function log(msg, type=''){
 }
 
 function switchTab(t){
-  ['import','mapeos','hist','unir','prep'].forEach(id=>{
+  ['import','mapeos','hist','unir','prep','cal'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
   if(t==='mapeos'){ loadMapeos(); loadConversiones(); }
   if(t==='hist') loadHistorial();
   if(t==='prep') prepCargarGuardadas();
+  if(t==='cal') calRender();
 }
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
@@ -1037,6 +1106,95 @@ async function prepBorrarGuardada(id){
   if(!confirm('¿Eliminar esta preparación guardada?'))return;
   try{ await api('DELETE','/preparaciones/'+id); prepCargarGuardadas(); log('Preparación eliminada'); }
   catch(e){ log('Error'); }
+}
+
+// ── CALENDARIO DE CARGAS ─────────────────────────────────────────────────────
+let calCur=new Date(); calCur.setDate(1);
+let calEditId=null;
+const calISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function calMes(n){ calCur.setMonth(calCur.getMonth()+n); calRender(); }
+function calHoy(){ calCur=new Date(); calCur.setDate(1); calRender(); }
+async function calRender(){
+  const y=calCur.getFullYear(), m=calCur.getMonth();
+  const label=calCur.toLocaleDateString('es-ES',{month:'long',year:'numeric'});
+  document.getElementById('cal-mes-label').textContent=label.charAt(0).toUpperCase()+label.slice(1);
+  // rango visible: desde el lunes de la semana del día 1 hasta el domingo de la última
+  const first=new Date(y,m,1);
+  const start=new Date(first); start.setDate(1-((first.getDay()+6)%7));
+  const last=new Date(y,m+1,0);
+  const end=new Date(last); end.setDate(last.getDate()+(7-((last.getDay()+6)%7)-1));
+  let cargas=[];
+  try{ cargas=await api('GET','/cargas?desde='+calISO(start)+'&hasta='+calISO(end)); }
+  catch(e){ document.getElementById('cal-grid').innerHTML='<div class="empty" style="color:var(--red)">'+e.message+'</div>'; return; }
+  const porDia={};
+  cargas.forEach(c=>{ const k=String(c.fecha).substring(0,10); (porDia[k]=porDia[k]||[]).push(c); });
+  const hoyISO=calISO(new Date());
+  const sem='<div class="cal-sem"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>';
+  let cells='';
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+    const iso=calISO(d);
+    const fuera=d.getMonth()!==m;
+    const finde=d.getDay()===0||d.getDay()===6;
+    const evs=(porDia[iso]||[]).map(c=>{
+      const cls=c.hecha?'hecha':(c.cita?'cita':'sin');
+      const tag=c.hecha?'':(c.cita?'<span class="ev-tag">cita</span>':'<span class="ev-tag">sin cita</span>');
+      return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${tag}</div>`;
+    }).join('');
+    cells+=`<div class="cal-dia${fuera?' fuera':''}${iso===hoyISO?' hoy':''}${finde?' finde':''}" onclick="calNueva('${iso}')"><div class="cal-dnum">${d.getDate()}</div>${evs}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML=sem+'<div class="cal-mes">'+cells+'</div>';
+  window._calCargas=cargas;
+}
+function calNueva(iso){
+  calEditId=null;
+  document.getElementById('cal-form-title').innerHTML='<i class="ti ti-truck"></i> Nueva carga · '+iso.split('-').reverse().join('/');
+  document.getElementById('cal-f-fecha').value=iso;
+  document.getElementById('cal-f-titulo').value='';
+  document.getElementById('cal-f-hora').value='';
+  document.getElementById('cal-f-cita').checked=false;
+  document.getElementById('cal-f-hecha').checked=false;
+  document.getElementById('cal-f-notas').value='';
+  document.getElementById('cal-f-borrar').style.display='none';
+  document.getElementById('cal-form-card').style.display='block';
+  document.getElementById('cal-f-titulo').focus();
+}
+function calEditar(id){
+  const c=(window._calCargas||[]).find(x=>x.id===id);
+  if(!c)return;
+  calEditId=id;
+  document.getElementById('cal-form-title').innerHTML='<i class="ti ti-pencil"></i> Editar carga';
+  document.getElementById('cal-f-fecha').value=String(c.fecha).substring(0,10);
+  document.getElementById('cal-f-titulo').value=c.titulo||'';
+  document.getElementById('cal-f-hora').value=c.hora||'';
+  document.getElementById('cal-f-cita').checked=!!c.cita;
+  document.getElementById('cal-f-hecha').checked=!!c.hecha;
+  document.getElementById('cal-f-notas').value=c.notas||'';
+  document.getElementById('cal-f-borrar').style.display='inline-flex';
+  document.getElementById('cal-form-card').style.display='block';
+}
+function calCerrarForm(){ document.getElementById('cal-form-card').style.display='none'; calEditId=null; }
+async function calGuardar(){
+  const body={
+    fecha:document.getElementById('cal-f-fecha').value,
+    titulo:document.getElementById('cal-f-titulo').value.trim(),
+    hora:document.getElementById('cal-f-hora').value.trim(),
+    cita:document.getElementById('cal-f-cita').checked,
+    hecha:document.getElementById('cal-f-hecha').checked,
+    notas:document.getElementById('cal-f-notas').value.trim()
+  };
+  if(!body.fecha||!body.titulo){ log('Pon fecha y descripción de la carga'); return; }
+  try{
+    if(calEditId) await api('PUT','/cargas/'+calEditId,body);
+    else await api('POST','/cargas',body);
+    calCerrarForm(); calRender();
+    log(calEditId?'Carga actualizada':'Carga añadida al calendario');
+  }catch(e){ log('Error guardando carga: '+e.message); }
+}
+async function calBorrar(){
+  if(!calEditId)return;
+  if(!confirm('¿Eliminar esta carga del calendario?'))return;
+  try{ await api('DELETE','/cargas/'+calEditId); calCerrarForm(); calRender(); log('Carga eliminada'); }
+  catch(e){ log('Error eliminando'); }
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
