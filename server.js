@@ -484,6 +484,20 @@ app.post('/api/preparaciones', async (req, res) => {
     res.json(r.rows[0]);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
+// PUT /api/preparaciones/:id — actualizar
+app.put('/api/preparaciones/:id', async (req, res) => {
+  const {nombre, resumen, num_pedidos, datos} = req.body;
+  try {
+    const cur = await pool.query('SELECT * FROM preparaciones WHERE id=$1',[req.params.id]);
+    if(!cur.rows.length) return res.status(404).json({error:'No encontrada'});
+    const c = cur.rows[0];
+    const r = await pool.query(
+      `UPDATE preparaciones SET nombre=$1,resumen=$2,num_pedidos=$3,datos=$4::jsonb WHERE id=$5 RETURNING id,nombre,resumen,num_pedidos,created_at`,
+      [nombre??c.nombre, resumen??c.resumen, (num_pedidos===undefined?c.num_pedidos:num_pedidos), (datos===undefined?c.datos:JSON.stringify(datos)), req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
 // DELETE /api/preparaciones/:id
 app.delete('/api/preparaciones/:id', async (req, res) => {
   try { await pool.query('DELETE FROM preparaciones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
