@@ -86,8 +86,8 @@ textarea:focus{border-color:var(--blue)}
 /* ── Calendario ── */
 .cal-leyenda{display:flex;gap:18px;align-items:center;font-size:12px;color:var(--text2);margin-bottom:12px;flex-wrap:wrap}
 .cal-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
-.cal-dot.cita{background:var(--green)}
-.cal-dot.sin{background:#d97706}
+.cal-dot.lista{background:var(--green)}
+.cal-dot.falta{background:#dc2626}
 .cal-dot.hecha{background:#9aa7b1}
 .cal-sem{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
 .cal-sem div{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center}
@@ -100,14 +100,15 @@ textarea:focus{border-color:var(--blue)}
 .cal-dia.hoy.finde{background:#eaf2fb}
 .cal-dnum{font-size:12px;font-weight:700;color:var(--text2)}
 .cal-dia.hoy .cal-dnum{color:var(--blue-d)}
-.cal-ev{font-size:11px;line-height:1.25;padding:4px 6px;border-radius:6px;border-left:3px solid;font-weight:600;cursor:pointer;overflow:hidden}
-.cal-ev.cita{background:var(--green-l);border-color:var(--green);color:#1d5429}
-.cal-ev.sin{background:#fef3c7;border-color:#d97706;color:#92400e}
+.cal-ev{font-size:11px;line-height:1.3;padding:4px 6px;border-radius:6px;border-left:3px solid;font-weight:600;cursor:pointer;overflow:hidden}
+.cal-ev.lista{background:var(--green-l);border-color:var(--green);color:#1d5429}
+.cal-ev.falta{background:#fee2e2;border-color:#dc2626;color:#991b1b}
 .cal-ev.hecha{background:#eef1f3;border-color:#9aa7b1;color:#5b6770;text-decoration:line-through}
 .cal-ev .ev-h{font-weight:800}
 .cal-ev .ev-tag{display:inline-block;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:0 4px;border-radius:4px;margin-left:3px;vertical-align:1px}
-.cal-ev.cita .ev-tag{background:var(--green);color:#fff}
-.cal-ev.sin .ev-tag{background:#d97706;color:#fff}
+.cal-ev .ev-tag.cita{background:#185FA5;color:#fff}
+.cal-ev .ev-tag.nocita{background:#cbd5e1;color:#475569}
+.cal-ev .ev-tag.falta{background:#dc2626;color:#fff}
 .empty i{font-size:32px;opacity:.3;display:block;margin-bottom:10px}
 /* PREPARACIÓN */
 .prep-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--blue-d);padding-bottom:12px}
@@ -350,8 +351,8 @@ textarea:focus{border-color:var(--blue)}
       </div>
     </div>
     <div class="cal-leyenda">
-      <span><span class="cal-dot cita"></span> Con cita</span>
-      <span><span class="cal-dot sin"></span> Sin cita</span>
+      <span><span class="cal-dot lista"></span> Lista (pedidos + albarán)</span>
+      <span><span class="cal-dot falta"></span> Falta (sin pedidos o sin albarán)</span>
       <span><span class="cal-dot hecha"></span> Hecha</span>
       <span style="color:var(--text3)">· Pulsa un día para añadir carga · pulsa una carga para editarla</span>
     </div>
@@ -1068,7 +1069,7 @@ async function prepGuardar(){
       prepCurrentId=rec.id;
     }
     document.getElementById('prep-save-name').value='';
-    const cal=await prepSyncCarga(prepCurrentId, nombre, fields);
+    const cal=await prepSyncCarga(prepCurrentId, nombre, fields, prepPedidos.length, Object.keys(prepAlbaranes||{}).length>0);
     const guia=prepPedidos.length?'':' (guía sin pedidos)';
     if(cal==='nueva') log('Preparación guardada'+guia+' y añadida al calendario el día de entrega ('+fields.fentrega+(fields.cita?' · con cita':' · sin cita')+')');
     else if(cal==='update') log('Preparación y carga del calendario actualizadas'+guia);
@@ -1078,11 +1079,11 @@ async function prepGuardar(){
   }catch(e){ log('Error guardando: '+e.message); }
 }
 // Crea o actualiza (sin duplicar) la carga del calendario vinculada a la preparación
-async function prepSyncCarga(prepId, nombre, fields){
+async function prepSyncCarga(prepId, nombre, fields, nPedidos, tieneAlb){
   const fecha=parseFechaES(fields.fentrega);   // el calendario se posiciona por la fecha de ENTREGA
   if(!fecha) return 'sinfecha';
   const notas=[fields.fcarga?'Carga '+fields.fcarga:'',fields.matricula?'Matrícula '+fields.matricula:'',fields.cita?'Cita '+fields.cita:''].filter(Boolean).join(' · ');
-  const body={fecha,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:prepId};
+  const body={fecha,titulo:nombre,cita:!!fields.cita,hora:fields.hora,notas,prep_id:prepId,num_pedidos:nPedidos||0,tiene_albaranes:!!tieneAlb};
   try{
     const cargas=await api('GET','/cargas').catch(()=>[]);
     const ex=(cargas||[]).find(c=>c.prep_id===prepId);
@@ -1149,7 +1150,9 @@ async function prepAlCalendario(id){
       if(!parseFechaES(inp)){ log('Fecha no válida, escríbela como dd/mm/aaaa'); return; }
       f.fentrega=inp;
     }
-    const r=await prepSyncCarga(id, rec.nombre||('Preparación '+id), f);
+    const nPed=((rec.datos&&rec.datos.pedidos)||[]).length;
+    const tAlb=Object.keys((rec.datos&&rec.datos.albaranes)||{}).length>0;
+    const r=await prepSyncCarga(id, rec.nombre||('Preparación '+id), f, nPed, tAlb);
     log(r==='update'?'Carga del calendario actualizada':('Añadida al calendario el día de entrega ('+f.fentrega+(f.cita?' · con cita':' · sin cita')+')'));
     prepCargarGuardadas();
   }catch(e){ log('Error añadiendo al calendario: '+e.message); }
@@ -1231,9 +1234,12 @@ async function calRender(){
     const fuera=d.getMonth()!==m;
     const finde=d.getDay()===0||d.getDay()===6;
     const evs=(porDia[iso]||[]).map(c=>{
-      const cls=c.hecha?'hecha':(c.cita?'cita':'sin');
-      const tag=c.hecha?'':(c.cita?'<span class="ev-tag">cita</span>':'<span class="ev-tag">sin cita</span>');
-      return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${c.prep_id?' <i class="ti ti-clipboard-check" title="Preparación vinculada"></i>':''}${tag}</div>`;
+      const lista=(c.num_pedidos>0)&&c.tiene_albaranes;
+      const cls=c.hecha?'hecha':(lista?'lista':'falta');
+      const citaTag=c.cita?'<span class="ev-tag cita">cita</span>':'<span class="ev-tag nocita">sin cita</span>';
+      const falta=[]; if(!(c.num_pedidos>0))falta.push('pedidos'); if(!c.tiene_albaranes)falta.push('albarán');
+      const estadoTag=c.hecha?'':(lista?'':`<span class="ev-tag falta" title="Falta: ${falta.join(' y ')}">falta ${falta.join('/')}</span>`);
+      return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${c.prep_id?' <i class="ti ti-clipboard-check" title="Preparación vinculada"></i>':''} ${citaTag}${estadoTag}</div>`;
     }).join('');
     cells+=`<div class="cal-dia${fuera?' fuera':''}${iso===hoyISO?' hoy':''}${finde?' finde':''}" onclick="calNueva('${iso}')"><div class="cal-dnum">${d.getDate()}</div>${evs}</div>`;
   }
