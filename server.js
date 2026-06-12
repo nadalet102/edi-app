@@ -221,10 +221,13 @@ function parseEDI(text){
       if(fr) fecha_entrega = '20'+fr[3]+'-'+fr[2].padStart(2,'0')+'-'+fr[1].padStart(2,'0');
     }
 
-    // EAN tienda → codigo → cliente BC (solo formato ES; el FR no trae EAN de tienda)
+    // Cliente BC: ES desde "EAN TIENDA" (dígitos 10-12) · FR desde "EAN CDER" (los 4 últimos dígitos menos el último)
     const eanMatch = block.match(/EAN TIENDA\s+(\d+)/);
-    const ean_tienda = eanMatch ? eanMatch[1] : null;
-    const codigo_tienda = ean_tienda ? ean_tienda.substring(9,12) : null;
+    const cderMatch = block.match(/EAN\s+CDER(?:\s+PAR)?\s+(\d+)/i);
+    const ean_tienda = eanMatch ? eanMatch[1] : (cderMatch ? cderMatch[1] : null);
+    let codigo_tienda = null;
+    if(eanMatch) codigo_tienda = eanMatch[1].substring(9,12);
+    else if(cderMatch && cderMatch[1].length >= 4) codigo_tienda = cderMatch[1].slice(-4,-1);
     const cliente_bc = codigo_tienda ? 'LM'+codigo_tienda : null;
 
     // Total
