@@ -374,6 +374,12 @@ textarea:focus{border-color:var(--blue)}
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" id="cal-f-hecha" style="width:17px;height:17px;accent-color:var(--blue)"> Carga hecha</label>
       <input type="text" id="cal-f-notas" placeholder="Notas (cita ref, matrícula, transportista...)" style="flex:1;min-width:220px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px">
     </div>
+    <div id="cal-f-estado" style="margin-top:12px;font-size:13px;display:none;padding:9px 12px;border-radius:var(--radius-sm)"></div>
+    <div style="margin-top:10px">
+      <label style="font-size:11px;color:var(--text2)">Preparación vinculada <span style="color:var(--text3)">(de aquí salen los pedidos y albaranes que dan el color verde)</span>
+        <select id="cal-f-prep" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px"></select>
+      </label>
+    </div>
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn btn-primary" id="cal-f-guardar" onclick="calGuardar()"><i class="ti ti-device-floppy"></i> Guardar</button>
       <button class="btn btn-outline" id="cal-f-abrir-prep" style="display:none"><i class="ti ti-clipboard-check"></i> Abrir preparación</button>
@@ -1257,6 +1263,8 @@ function calNueva(iso){
   document.getElementById('cal-f-notas').value='';
   document.getElementById('cal-f-borrar').style.display='none';
   document.getElementById('cal-f-abrir-prep').style.display='none';
+  document.getElementById('cal-f-estado').style.display='none';
+  calCargarPrepSelect(null);
   document.getElementById('cal-form-card').style.display='block';
   document.getElementById('cal-f-titulo').focus();
 }
@@ -1275,18 +1283,50 @@ function calEditar(id){
   const ab=document.getElementById('cal-f-abrir-prep');
   if(c.prep_id){ ab.style.display='inline-flex'; ab.onclick=()=>calAbrirPrep(c.prep_id); }
   else { ab.style.display='none'; ab.onclick=null; }
+  // Estado real de la carga (por qué está verde o roja)
+  const est=document.getElementById('cal-f-estado');
+  const lista=(c.num_pedidos>0)&&c.tiene_albaranes;
+  est.style.display='block';
+  if(!c.prep_id){
+    est.style.background='#fef3c7'; est.style.color='#92400e';
+    est.innerHTML='<i class="ti ti-alert-triangle"></i> Esta carga no tiene preparación vinculada. Elige una abajo para que coja sus pedidos y albaranes.';
+  } else if(lista){
+    est.style.background='var(--green-l)'; est.style.color='#1d5429';
+    est.innerHTML='<i class="ti ti-circle-check"></i> Lista — '+c.num_pedidos+' pedidos · con albaranes.';
+  } else {
+    est.style.background='#fee2e2'; est.style.color='#991b1b';
+    est.innerHTML='<i class="ti ti-alert-circle"></i> Falta: '+(c.num_pedidos>0?(c.num_pedidos+' pedidos'):'<b>sin pedidos</b>')+' · '+(c.tiene_albaranes?'con albaranes':'<b>sin albaranes</b>')+'. Si los pedidos/albaranes están en otra preparación, selecciónala abajo; o abre la preparación, añádelos y dale a Actualizar.';
+  }
+  calCargarPrepSelect(c.prep_id);
   document.getElementById('cal-form-card').style.display='block';
+}
+// Rellena el desplegable de preparaciones guardadas, marcando la vinculada
+async function calCargarPrepSelect(selId){
+  const sel=document.getElementById('cal-f-prep');
+  sel.innerHTML='<option value="">(ninguna)</option>';
+  try{
+    const preps=await api('GET','/preparaciones');
+    preps.forEach(p=>{
+      const o=document.createElement('option');
+      o.value=p.id;
+      o.textContent=(p.nombre||('Preparación '+p.id))+(p.resumen?' — '+p.resumen:'');
+      if(selId&&Number(selId)===Number(p.id))o.selected=true;
+      sel.appendChild(o);
+    });
+  }catch(e){ /* sin preparaciones */ }
 }
 function calAbrirPrep(id){ switchTab('prep'); prepRescatar(id); }
 function calCerrarForm(){ document.getElementById('cal-form-card').style.display='none'; calEditId=null; }
 async function calGuardar(){
+  const prepSel=document.getElementById('cal-f-prep').value;
   const body={
     fecha:document.getElementById('cal-f-fecha').value,
     titulo:document.getElementById('cal-f-titulo').value.trim(),
     hora:document.getElementById('cal-f-hora').value.trim(),
     cita:document.getElementById('cal-f-cita').checked,
     hecha:document.getElementById('cal-f-hecha').checked,
-    notas:document.getElementById('cal-f-notas').value.trim()
+    notas:document.getElementById('cal-f-notas').value.trim(),
+    prep_id:prepSel?Number(prepSel):null
   };
   if(!body.fecha||!body.titulo){ log('Pon fecha y descripción de la carga'); return; }
   try{
