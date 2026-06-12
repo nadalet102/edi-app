@@ -179,8 +179,8 @@ function parseEDI(text){
   let inBlock = false;
 
   for(const line of lines){
-    // New pedido starts with "LEROY MERLIN" at start of line AND contains "PEDIDO \d+"
-    if(line.match(/^LEROY MERLIN\S*\s+.*PEDIDO\s+\d+/)){
+    // Nuevo pedido: empieza por "LEROY MERLIN" y contiene "PEDIDO \d+" (ES) o "COMMANDE \d+" (FR)
+    if(line.match(/^LEROY MERLIN.*\b(?:PEDIDO|COMMANDE)\s+\d+/)){
       if(inBlock && currentBlock.length > 0){
         blocks.push(currentBlock.join('\n'));
       }
@@ -188,8 +188,8 @@ function parseEDI(text){
       inBlock = true;
     } else if(inBlock){
       currentBlock.push(line);
-      // End of block
-      if(line.match(/^-{20,}/) || line.match(/^\*END\*/)){
+      // Fin de bloque
+      if(line.match(/^-{20,}/) || line.match(/\*END\*/) || line.match(/^FIN\s+(?:PEDIDO|COMMANDE)/i)){
         blocks.push(currentBlock.join('\n'));
         currentBlock = [];
         inBlock = false;
@@ -201,22 +201,27 @@ function parseEDI(text){
   console.log('Blocks found after fix:', blocks.length);
 
   for(const block of blocks){
-    const numMatch = block.match(/PEDIDO N\s+(\d+)/);
+    // Nº de pedido: "PEDIDO N" / "COMMANDE N", o como fallback el del encabezado
+    const numMatch = block.match(/(?:PEDIDO|COMMANDE)\s+N\s+(\d+)/) || block.match(/\b(?:PEDIDO|COMMANDE)\s+(\d+)/);
     if(!numMatch) continue;
     const num_pedido = numMatch[1];
 
-    // Tienda nombre desde header
-    const headerMatch = block.match(/LEROY MERLIN\s+\S*\s+PEDIDO\s+\d+\s+(.+?)\s+EL\s+\d{2}\/\d{2}\/\d{2}/);
+    // Tienda desde la cabecera (ES: "...PEDIDO N ... EL dd/mm/yy" · FR: "COMMANDE N <TIENDA> ... LE dd/mm/yy")
+    let headerMatch = block.match(/LEROY MERLIN\s+\S*\s+PEDIDO\s+\d+\s+(.+?)\s+EL\s+\d{2}\/\d{2}\/\d{2}/);
+    if(!headerMatch) headerMatch = block.match(/COMMANDE\s+\d+\s+(.+?)\s+LE\s+\d{2}\/\d{2}\/\d{2}/);
     const nombre_tienda = headerMatch ? headerMatch[1].trim() : '';
 
-    // Fecha entrega: entre ** **
-    const fechaEntregaMatch = block.match(/ENTREGUE EL \*\*(\d{2})\/(\d{2})\/(\d{2})\*\*/);
+    // Fecha de entrega: ES "ENTREGUE EL **dd/mm/yy**" · FR "AU PLUS TARD [LE] dd/mm/yy"
     let fecha_entrega = null;
+    const fechaEntregaMatch = block.match(/ENTREGUE EL \*\*(\d{2})\/(\d{2})\/(\d{2})\*\*/);
     if(fechaEntregaMatch){
       fecha_entrega = '20'+fechaEntregaMatch[3]+'-'+fechaEntregaMatch[2].padStart(2,'0')+'-'+fechaEntregaMatch[1].padStart(2,'0');
+    } else {
+      const fr = block.match(/AU PLUS TARD\s+(?:LE\s+)?(\d{2})\/(\d{2})\/(\d{2})/);
+      if(fr) fecha_entrega = '20'+fr[3]+'-'+fr[2].padStart(2,'0')+'-'+fr[1].padStart(2,'0');
     }
 
-    // EAN tienda → codigo → cliente BC
+    // EAN tienda → codigo → cliente BC (solo formato ES; el FR no trae EAN de tienda)
     const eanMatch = block.match(/EAN TIENDA\s+(\d+)/);
     const ean_tienda = eanMatch ? eanMatch[1] : null;
     const codigo_tienda = ean_tienda ? ean_tienda.substring(9,12) : null;
@@ -265,6 +270,23 @@ function parseEDI(text){
       const refLm = m[5];
       if(isNaN(cantidad)||isNaN(precio)) continue;
       lineas.push({ ref_edi:ref, descripcion, cantidad, precio_unidad:precio, ref_lm:refLm });
+    }
+
+    // FALLBACK: texto sin saltos de línea (todo seguido). Extraemos los productos del bloque
+    // aprovechando que cada uno termina en su REF LM de 8 dígitos (aunque vengan pegados).
+    if(lineas.length === 0){
+      let seg = block.split(/TOTAL\s+GENERAL/i)[0];        // quedarnos con lo anterior al total
+      seg = seg.replace(/^[\s\S]*?REF\s*LM/i, '');         // recortar la cabecera de columnas (FR), aunque "REF LM" venga pegado al 1er producto
+      const re = /([A-Z0-9][A-Z0-9\-]{2,})\s+(.+?)\s+([\d.,]+)\s+([\d.,]+)\s*\*?\s*(\d{8})/g;
+      let mm;
+      while((mm = re.exec(seg)) !== null){
+        const ref = mm[1];
+        if(!ref.match(/^[A-Z0-9][A-Z0-9\-]*$/) || ref.length < 3) continue;
+        const cantidad = parseFloat(mm[3].replace(',','.'));
+        const precio = parseFloat(mm[4].replace(',','.'));
+        if(isNaN(cantidad)||isNaN(precio)) continue;
+        lineas.push({ ref_edi:ref, descripcion:mm[2].trim(), cantidad, precio_unidad:precio, ref_lm:mm[5] });
+      }
     }
 
     if(lineas.length > 0){
