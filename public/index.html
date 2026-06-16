@@ -186,7 +186,7 @@ textarea:focus{border-color:var(--blue)}
 .prep-mnote{margin-left:auto;font-size:11px;font-weight:600;color:#92400e;display:inline-flex;align-items:center;gap:5px}
 .prep-mnote .ti{font-size:14px}
 @media print{
-  .topbar,.tabs,.statusbar,#prep-upload{display:none!important}
+  .topbar,.tabs,.statusbar,#prep-upload,#prep-guardadas-card{display:none!important}
   body{background:#fff!important}
   .view{padding:0!important;max-width:none!important}
   #prep-print .card{border:none!important;margin:0!important;padding:0!important}
@@ -331,10 +331,18 @@ textarea:focus{border-color:var(--blue)}
   </div>
   <div class="card" id="prep-guardadas-card">
     <div class="card-hdr">
-      <div class="card-title"><i class="ti ti-archive"></i> Preparaciones guardadas</div>
-      <button class="btn btn-outline btn-sm" onclick="prepCargarGuardadas()"><i class="ti ti-refresh"></i></button>
+      <div class="card-title"><i class="ti ti-archive"></i> Preparaciones guardadas <span id="prep-guardadas-count" style="color:var(--text3);font-weight:400;font-size:12px"></span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="prep-search" placeholder="Buscar tienda, fecha, nº..." oninput="prepRenderGuardadas()" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:180px">
+        <select id="prep-filtro" onchange="prepRenderGuardadas()" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px">
+          <option value="todas">Todas</option>
+          <option value="cal">En el calendario</option>
+          <option value="nocal">Sin vincular</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="prepCargarGuardadas()"><i class="ti ti-refresh"></i></button>
+      </div>
     </div>
-    <div id="prep-guardadas-list"></div>
+    <div id="prep-guardadas-list" style="max-height:340px;overflow:auto"></div>
   </div>
   <div id="prep-print"></div>
 </div>
@@ -1125,25 +1133,46 @@ function parseFechaES(s){
   if(mo<1||mo>12||d<1||d>31)return null;
   return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
 }
+let prepGuardadasData=[];      // lista completa de preparaciones guardadas
+let prepGuardadasLinked=new Set(); // ids vinculados al calendario
 async function prepCargarGuardadas(){
   const el=document.getElementById('prep-guardadas-list');
   if(!el)return;
   try{
     const [data,cargas]=await Promise.all([api('GET','/preparaciones'), api('GET','/cargas').catch(()=>[])]);
-    if(!data.length){ el.innerHTML='<div class="empty" style="padding:24px"><i class="ti ti-archive"></i>No hay preparaciones guardadas todavía</div>'; return; }
-    const linked=new Set((cargas||[]).filter(c=>c.prep_id).map(c=>c.prep_id));
-    el.innerHTML='<table class="lineas-table"><thead><tr><th>Guardada</th><th>Nombre</th><th>Resumen</th><th>Calendario</th><th></th></tr></thead><tbody>'+
-      data.map(p=>`<tr>
-        <td style="white-space:nowrap;color:var(--text2)">${new Date(p.created_at).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
-        <td style="font-weight:600">${p.nombre||'—'}</td>
-        <td style="color:var(--text2)">${p.resumen||'—'}</td>
-        <td style="white-space:nowrap">${linked.has(p.id)?'<span class="badge badge-green"><i class="ti ti-calendar-check"></i> En el calendario</span>':`<button class="btn btn-outline btn-sm" onclick="prepAlCalendario(${p.id})"><i class="ti ti-calendar-plus"></i> Al calendario</button>`}</td>
-        <td style="white-space:nowrap;text-align:right">
-          <button class="btn btn-primary btn-sm" onclick="prepRescatar(${p.id})"><i class="ti ti-archive-off"></i> Rescatar</button>
-          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="prepBorrarGuardada(${p.id})"><i class="ti ti-trash"></i></button>
-        </td>
-      </tr>`).join('')+'</tbody></table>';
+    prepGuardadasData=data||[];
+    prepGuardadasLinked=new Set((cargas||[]).filter(c=>c.prep_id).map(c=>Number(c.prep_id)));
+    prepRenderGuardadas();
   }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando preparaciones</div>'; }
+}
+function prepRenderGuardadas(){
+  const el=document.getElementById('prep-guardadas-list');
+  if(!el)return;
+  const cnt=document.getElementById('prep-guardadas-count');
+  if(!prepGuardadasData.length){ el.innerHTML='<div class="empty" style="padding:24px"><i class="ti ti-archive"></i>No hay preparaciones guardadas todavía</div>'; if(cnt)cnt.textContent=''; return; }
+  const q=(document.getElementById('prep-search').value||'').toLowerCase().trim();
+  const filtro=document.getElementById('prep-filtro').value;
+  let list=prepGuardadasData.filter(p=>{
+    const enCal=prepGuardadasLinked.has(Number(p.id));
+    if(filtro==='cal'&&!enCal)return false;
+    if(filtro==='nocal'&&enCal)return false;
+    if(!q)return true;
+    const txt=((p.nombre||'')+' '+(p.resumen||'')+' '+new Date(p.created_at).toLocaleDateString('es-ES')).toLowerCase();
+    return txt.includes(q);
+  });
+  if(cnt)cnt.textContent='· '+list.length+(list.length!==prepGuardadasData.length?(' de '+prepGuardadasData.length):'');
+  if(!list.length){ el.innerHTML='<div class="empty" style="padding:20px"><i class="ti ti-search-off"></i>Ninguna coincide con el filtro</div>'; return; }
+  el.innerHTML='<table class="lineas-table"><thead><tr><th>Guardada</th><th>Nombre</th><th>Resumen</th><th>Calendario</th><th></th></tr></thead><tbody>'+
+    list.map(p=>`<tr>
+      <td style="white-space:nowrap;color:var(--text2)">${new Date(p.created_at).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+      <td style="font-weight:600">${p.nombre||'—'}</td>
+      <td style="color:var(--text2)">${p.resumen||'—'}</td>
+      <td style="white-space:nowrap">${prepGuardadasLinked.has(Number(p.id))?'<span class="badge badge-green"><i class="ti ti-calendar-check"></i> En el calendario</span>':`<button class="btn btn-outline btn-sm" onclick="prepAlCalendario(${p.id})"><i class="ti ti-calendar-plus"></i> Al calendario</button>`}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn btn-primary btn-sm" onclick="prepRescatar(${p.id})"><i class="ti ti-archive-off"></i> Rescatar</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="prepBorrarGuardada(${p.id})"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`).join('')+'</tbody></table>';
 }
 async function prepAlCalendario(id){
   log('Añadiendo al calendario...');
