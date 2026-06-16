@@ -339,6 +339,7 @@ textarea:focus{border-color:var(--blue)}
           <option value="cal">En el calendario</option>
           <option value="nocal">Sin vincular</option>
         </select>
+        <button class="btn btn-outline btn-sm" id="prep-pasadas-btn" onclick="prepTogglePasadas()" style="display:none"><i class="ti ti-history"></i> Ver pasadas</button>
         <button class="btn btn-outline btn-sm" onclick="prepCargarGuardadas()"><i class="ti ti-refresh"></i></button>
       </div>
     </div>
@@ -1135,6 +1136,8 @@ function parseFechaES(s){
 }
 let prepGuardadasData=[];      // lista completa de preparaciones guardadas
 let prepGuardadasLinked=new Set(); // ids vinculados al calendario
+let prepCargaMap={};           // prepId -> {fecha:'YYYY-MM-DD', hecha:bool} (de la carga del calendario)
+let prepVerPasadas=false;      // mostrar también las pasadas y hechas
 async function prepCargarGuardadas(){
   const el=document.getElementById('prep-guardadas-list');
   if(!el)return;
@@ -1142,9 +1145,12 @@ async function prepCargarGuardadas(){
     const [data,cargas]=await Promise.all([api('GET','/preparaciones'), api('GET','/cargas').catch(()=>[])]);
     prepGuardadasData=data||[];
     prepGuardadasLinked=new Set((cargas||[]).filter(c=>c.prep_id).map(c=>Number(c.prep_id)));
+    prepCargaMap={};
+    (cargas||[]).forEach(c=>{ if(c.prep_id) prepCargaMap[Number(c.prep_id)]={fecha:String(c.fecha).substring(0,10), hecha:!!c.hecha}; });
     prepRenderGuardadas();
   }catch(e){ el.innerHTML='<div class="empty" style="color:var(--red)">Error cargando preparaciones</div>'; }
 }
+function prepTogglePasadas(){ prepVerPasadas=!prepVerPasadas; prepRenderGuardadas(); }
 function prepRenderGuardadas(){
   const el=document.getElementById('prep-guardadas-list');
   if(!el)return;
@@ -1152,14 +1158,28 @@ function prepRenderGuardadas(){
   if(!prepGuardadasData.length){ el.innerHTML='<div class="empty" style="padding:24px"><i class="ti ti-archive"></i>No hay preparaciones guardadas todavía</div>'; if(cnt)cnt.textContent=''; return; }
   const q=(document.getElementById('prep-search').value||'').toLowerCase().trim();
   const filtro=document.getElementById('prep-filtro').value;
+  const hoy=new Date(); const hoyISO=hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+  let nPasadas=0;
   let list=prepGuardadasData.filter(p=>{
     const enCal=prepGuardadasLinked.has(Number(p.id));
+    // Pasada y hecha (entrega anterior a hoy + marcada hecha en el calendario) → se oculta salvo "ver pasadas"
+    const info=prepCargaMap[Number(p.id)];
+    const pasadaHecha = info && info.fecha && info.fecha < hoyISO && info.hecha;
+    if(pasadaHecha){ nPasadas++; if(!prepVerPasadas) return false; }
     if(filtro==='cal'&&!enCal)return false;
     if(filtro==='nocal'&&enCal)return false;
     if(!q)return true;
     const txt=((p.nombre||'')+' '+(p.resumen||'')+' '+new Date(p.created_at).toLocaleDateString('es-ES')).toLowerCase();
     return txt.includes(q);
   });
+  // Botón ver/ocultar pasadas
+  const btn=document.getElementById('prep-pasadas-btn');
+  if(btn){
+    if(nPasadas>0 || prepVerPasadas){
+      btn.style.display='inline-flex';
+      btn.innerHTML=prepVerPasadas?'<i class="ti ti-eye-off"></i> Ocultar pasadas':('<i class="ti ti-history"></i> Ver pasadas ('+nPasadas+')');
+    } else btn.style.display='none';
+  }
   if(cnt)cnt.textContent='· '+list.length+(list.length!==prepGuardadasData.length?(' de '+prepGuardadasData.length):'');
   if(!list.length){ el.innerHTML='<div class="empty" style="padding:20px"><i class="ti ti-search-off"></i>Ninguna coincide con el filtro</div>'; return; }
   el.innerHTML='<table class="lineas-table"><thead><tr><th>Guardada</th><th>Nombre</th><th>Resumen</th><th>Calendario</th><th></th></tr></thead><tbody>'+
