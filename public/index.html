@@ -306,6 +306,7 @@ textarea:focus{border-color:var(--blue)}
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
+        <button class="btn btn-outline" id="prep-check-btn" onclick="prepDescargarChecklistPDF()" style="display:none"><i class="ti ti-checkbox"></i> PDF rellenable (checklist)</button>
         <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
         <button class="btn btn-primary" id="prep-save-btn" onclick="prepGuardar()"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
         <button class="btn btn-outline" id="prep-nueva-btn" onclick="prepNueva()" style="display:none"><i class="ti ti-plus"></i> Nueva</button>
@@ -800,6 +801,7 @@ async function prepCargar(file){
     document.getElementById('prep-info').textContent=pedidos.length+' pedidos · listo para imprimir';
     document.getElementById('prep-print-btn').style.display='inline-flex';
     document.getElementById('prep-pdf-btn').style.display='inline-flex';
+    document.getElementById('prep-check-btn').style.display='inline-flex';
     prepUpdateSaveUI();
     log(pedidos.length+' pedidos procesados para preparación'+(prepCurrentId?' · se actualizará la preparación rescatada al guardar':''));
   }catch(e){
@@ -1059,6 +1061,78 @@ async function prepDescargarPDF(){
   }catch(e){ log('Error generando PDF: '+e.message); }
 }
 
+// ── PDF CHECKLIST RELLENABLE (formulario con casillas) ───────────────────────
+let _pdflibLoaded=false;
+async function prepLoadPdfLib(){
+  if(_pdflibLoaded&&window.PDFLib)return;
+  await _prepScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
+  _pdflibLoaded=true;
+}
+async function buildChecklistPDF(pedidos, fields){
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontB = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const form = pdf.getForm();
+  const A4=[595.28,841.89], M=40, RW=A4[0]-2*M;
+  const BLUE=rgb(0.05,0.31,0.49), GREEN=rgb(0.18,0.48,0.23), GRAY=rgb(0.42,0.45,0.5), LINE=rgb(0.8,0.84,0.88), BG=rgb(0.96,0.97,0.98);
+  const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
+  let page=pdf.addPage(A4), y=A4[1]-M;
+  const newPage=()=>{ page=pdf.addPage(A4); y=A4[1]-M; };
+  const need=h=>{ if(y-h<M) newPage(); };
+  const txt=(s,x,yy,o)=>{o=o||{};page.drawText(String(s==null?'':s),{x,y:yy,size:o.sz||9,font:o.b?fontB:font,color:o.c||rgb(0,0,0)});};
+  txt('HOJA DE PREPARACIÓN — CHECKLIST',M,y-4,{sz:15,b:true,c:BLUE}); y-=20;
+  txt('Marca cada línea según la vas preparando. Al final de cada pedido, marca "Pedido preparado y revisado".',M,y-4,{sz:8,c:GRAY}); y-=16;
+  page.drawRectangle({x:M,y:y-26,width:RW/2-4,height:26,color:BG,borderColor:BLUE,borderWidth:1});
+  page.drawRectangle({x:M+RW/2+4,y:y-26,width:RW/2-4,height:26,color:rgb(0.9,0.96,0.91),borderColor:GREEN,borderWidth:1});
+  txt('FECHA DE CARGA',M+6,y-9,{sz:7,b:true,c:BLUE}); txt(fields.fcarga||'—',M+6,y-21,{sz:12,b:true});
+  txt('FECHA DE ENTREGA / DESCARGA',M+RW/2+10,y-9,{sz:7,b:true,c:GREEN}); txt(fields.fentrega||'—',M+RW/2+10,y-21,{sz:12,b:true});
+  y-=38;
+  let idx=0;
+  for(const o of pedidos){
+    need(34);
+    page.drawRectangle({x:M,y:y-18,width:RW,height:18,color:BLUE});
+    txt((o.docExt||o.pedido||'')+'   '+(o.tienda||''),M+6,y-13,{sz:10,b:true,c:rgb(1,1,1)});
+    txt('Pedido '+(o.pedido||''),M+RW-120,y-13,{sz:8,c:rgb(0.85,0.9,0.95)});
+    y-=24;
+    o.lineas.forEach((l,li)=>{
+      need(16);
+      const cb=form.createCheckBox('p'+idx+'_l'+li);
+      cb.addToPage(page,{x:M+4,y:y-12,width:12,height:12,borderColor:GRAY,borderWidth:1});
+      const emb = esSaco(l)? (l.embalaje||((l.palet||0)+' palet')) : (l.cantidad+' ud');
+      txt(l.codigo||'',M+24,y-9,{sz:9,b:true});
+      let d=(l.descripcion||''); if(d.length>52)d=d.slice(0,51)+'…';
+      txt(d,M+92,y-9,{sz:9});
+      txt(String(l.cantidad),M+RW-90,y-9,{sz:9,b:true});
+      txt(emb,M+RW-55,y-9,{sz:8,c:GRAY});
+      y-=15;
+    });
+    need(16);
+    const done=form.createCheckBox('p'+idx+'_done');
+    done.addToPage(page,{x:M+4,y:y-12,width:13,height:13,borderColor:GREEN,borderWidth:1.5});
+    txt('Pedido preparado y revisado',M+24,y-9,{sz:9,b:true,c:GREEN});
+    y-=22;
+    page.drawLine({start:{x:M,y:y+6},end:{x:M+RW,y:y+6},thickness:0.5,color:LINE});
+    y-=4; idx++;
+  }
+  return await pdf.save();
+}
+async function prepDescargarChecklistPDF(){
+  if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
+  log('Generando checklist rellenable...');
+  try{
+    await prepLoadPdfLib();
+    const bytes=await buildChecklistPDF(prepPedidos, prepFields());
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
+    a.href=url; a.download='Checklist preparacion '+hoy+'.pdf'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    log('Checklist rellenable descargado');
+  }catch(e){ log('Error generando checklist: '+e.message); }
+}
+
 // ── PREPARACIONES GUARDADAS ──────────────────────────────────────────────────
 async function prepGuardar(){
   const fields=prepFields();
@@ -1120,7 +1194,7 @@ function prepNueva(){
   const ai=document.getElementById('prep-alb-info'); if(ai){ai.textContent='';}
   document.getElementById('prep-print').innerHTML='';
   document.getElementById('prep-info').textContent='';
-  ['prep-print-btn','prep-pdf-btn'].forEach(i=>document.getElementById(i).style.display='none');
+  ['prep-print-btn','prep-pdf-btn','prep-check-btn'].forEach(i=>document.getElementById(i).style.display='none');
   prepUpdateSaveUI();
   log('Nueva preparación en blanco');
 }
@@ -1230,11 +1304,13 @@ async function prepRescatar(id){
       document.getElementById('prep-info').textContent=prepPedidos.length+' pedidos · rescatada';
       document.getElementById('prep-print-btn').style.display='inline-flex';
       document.getElementById('prep-pdf-btn').style.display='inline-flex';
+      document.getElementById('prep-check-btn').style.display='inline-flex';
     } else {
       prepRenderVacia(f);
       document.getElementById('prep-info').textContent='Guía rescatada · sube el PDF para añadir los pedidos';
       document.getElementById('prep-print-btn').style.display='none';
       document.getElementById('prep-pdf-btn').style.display='none';
+      document.getElementById('prep-check-btn').style.display='none';
     }
     prepUpdateSaveUI();
     const nAlb=Object.keys(prepAlbaranes||{}).length;
