@@ -306,7 +306,7 @@ textarea:focus{border-color:var(--blue)}
         <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
-        <button class="btn btn-outline" id="prep-check-btn" onclick="prepDescargarChecklistPDF()" style="display:none"><i class="ti ti-checkbox"></i> PDF rellenable (checklist)</button>
+        <button class="btn btn-outline" id="prep-check-btn" onclick="prepDescargarChecklistPDF()" style="display:none"><i class="ti ti-checkbox"></i> PDF rellenable (hoja)</button>
         <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
         <button class="btn btn-primary" id="prep-save-btn" onclick="prepGuardar()"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
         <button class="btn btn-outline" id="prep-nueva-btn" onclick="prepNueva()" style="display:none"><i class="ti ti-plus"></i> Nueva</button>
@@ -1068,52 +1068,232 @@ async function prepLoadPdfLib(){
   await _prepScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
   _pdflibLoaded=true;
 }
-async function buildChecklistPDF(pedidos, fields){
+async function buildHojaPDF(pedidos, fields){
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const font  = await pdf.embedFont(StandardFonts.Helvetica);
   const fontB = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const form = pdf.getForm();
-  const A4=[595.28,841.89], M=40, RW=A4[0]-2*M;
-  const BLUE=rgb(0.05,0.31,0.49), GREEN=rgb(0.18,0.48,0.23), GRAY=rgb(0.42,0.45,0.5), LINE=rgb(0.8,0.84,0.88), BG=rgb(0.96,0.97,0.98);
+  const form  = pdf.getForm();
+  const A4=[595.28,841.89], M=32, RW=A4[0]-2*M;
+  // paleta (igual que la app)
+  const BLUE=rgb(0.094,0.373,0.647), BLUED=rgb(0.05,0.31,0.49), GREEN=rgb(0.176,0.478,0.227),
+        GREENL=rgb(0.902,0.961,0.918), GRAYT=rgb(0.42,0.45,0.5), GRAYT3=rgb(0.6,0.62,0.66),
+        LINE=rgb(0.82,0.86,0.90), HEAD=rgb(0.93,0.95,0.97), BG=rgb(0.957,0.965,0.973),
+        BLUEBG=rgb(0.917,0.949,0.984), AMBERBG=rgb(0.996,0.953,0.78), AMBERLN=rgb(0.85,0.47,0.02),
+        REDBG=rgb(0.996,0.886,0.886), BLACK=rgb(0.1,0.1,0.1), WHITE=rgb(1,1,1);
+
+  const nf=(n,d=0)=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const nbf=n=>Number(n||0).toLocaleString('es-ES',{maximumFractionDigits:2});
+  const bultosDe=l=>{const u=prepConv[l.codigo]; return u>0? l.cantidad/u : l.cantidad;};
   const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
+  const bultosLbl=p=>{const a=[];if(p.palet)a.push(p.palet+' PAL');if(p.mini)a.push(p.mini+' MINI');return a.length?a.join(' + '):'—';};
+
+  // ───── datos (idéntico a prepRender) ─────
+  const prod={};
+  for(const o of pedidos)for(const l of o.lineas){const p=prod[l.codigo]||(prod[l.codigo]={codigo:l.codigo,desc:l.descripcion,cant:0,kgs:0,m3:0,palet:0,mini:0,peds:new Set()});p.cant+=l.cantidad;p.kgs+=l.kgs;p.m3+=l.m3||0;p.palet+=l.palet;p.mini+=l.mini;p.peds.add(o.pedido);if(l.descripcion.length>p.desc.length)p.desc=l.descripcion;}
+  const plist=Object.values(prod).sort((a,b)=>b.palet-a.palet||b.cant-a.cant);
+  const tot=pedidos.reduce((s,o)=>{o.lineas.forEach(l=>{s.kgs+=l.kgs;s.m3+=l.m3||0;s.palet+=l.palet;s.mini+=l.mini;});return s;},{kgs:0,m3:0,palet:0,mini:0});
+  const destino=(pedidos[0]&&pedidos[0].destino)||'CAMIÓN';
+  const hoy=new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'});
+  const basePalet=o=>{const c=o._sacoLines.filter(l=>l.palet>0);if(!c.length)return o._sacoLines[0]||null;const pri=l=>{const d=(l.descripcion||'').toLowerCase();if(/blanca/.test(d))return 1;if(/volc/.test(d))return 2;if(/s[íi]lice/.test(d))return 99;return 50;};return c.slice().sort((a,b)=>pri(a)-pri(b))[0];};
+  const tipoPed=o=>{const s=o.lineas.some(esSaco),x=o.lineas.some(l=>!esSaco(l));return s&&x?'mixto':s?'solo':'otros';};
+  pedidos.forEach((o,i)=>{o._i=i;o._tipo=tipoPed(o);});
+  const paletProds=plist.filter(p=>p.palet>0||p.mini>0);
+  const bultoProds=plist.filter(p=>p.palet===0&&p.mini===0);
+  const bCant=bultoProds.reduce((s,p)=>s+p.cant,0), bKgs=bultoProds.reduce((s,p)=>s+p.kgs,0);
+  pedidos.forEach(o=>{
+    o._palets=o.lineas.reduce((s,l)=>s+l.palet,0);
+    o._mini=o.lineas.reduce((s,l)=>s+l.mini,0);
+    o._bultoLines=o.lineas.filter(l=>!esSaco(l));
+    o._sacoLines=o.lineas.filter(esSaco);
+    o._nb=o._bultoLines.reduce((s,l)=>s+bultosDe(l),0);
+    o._bultosPalet=o._nb>=10?1:0;
+    o._nbEff=o._bultosPalet?0:o._nb;
+    o._paletsEff=o._palets+o._bultosPalet;
+    o._bultosOnly=o._bultoLines.length>0&&o._palets===0&&!o._bultosPalet;
+    o._enf=(o._nbEff>0&&o._palets>=1)?1:0;
+    o._sueltos=Math.max(o._paletsEff-o._enf,0);
+    o._base=o._enf?basePalet(o):null;
+    o._tipoEff=o._bultosPalet?'solo':o._tipo;
+  });
+  const pedEnf=pedidos.filter(o=>o._enf), pedBS=pedidos.filter(o=>o._bultosOnly), pedBP=pedidos.filter(o=>o._bultosPalet);
+  const nEnf=pedEnf.length,nBS=pedBS.length,nBP=pedBP.length;
+  const totSueltos=pedidos.reduce((s,o)=>s+o._sueltos,0);
+  const totEnf=pedidos.reduce((s,o)=>s+o._enf,0);
+  const totBultosCargados=pedidos.reduce((s,o)=>s+o._nbEff,0);
+  const totBultosPalets=pedidos.reduce((s,o)=>s+o._bultosPalet,0);
+  const totPaletsEff=tot.palet+totBultosPalets;
+  const totBS=pedBS.reduce((s,o)=>s+o._nb,0);
+
+  // ───── motor de dibujo ─────
   let page=pdf.addPage(A4), y=A4[1]-M;
-  const newPage=()=>{ page=pdf.addPage(A4); y=A4[1]-M; };
-  const need=h=>{ if(y-h<M) newPage(); };
-  const txt=(s,x,yy,o)=>{o=o||{};page.drawText(String(s==null?'':s),{x,y:yy,size:o.sz||9,font:o.b?fontB:font,color:o.c||rgb(0,0,0)});};
-  txt('HOJA DE PREPARACIÓN — CHECKLIST',M,y-4,{sz:15,b:true,c:BLUE}); y-=20;
-  txt('Marca cada línea según la vas preparando. Al final de cada pedido, marca "Pedido preparado y revisado".',M,y-4,{sz:8,c:GRAY}); y-=16;
-  page.drawRectangle({x:M,y:y-26,width:RW/2-4,height:26,color:BG,borderColor:BLUE,borderWidth:1});
-  page.drawRectangle({x:M+RW/2+4,y:y-26,width:RW/2-4,height:26,color:rgb(0.9,0.96,0.91),borderColor:GREEN,borderWidth:1});
-  txt('FECHA DE CARGA',M+6,y-9,{sz:7,b:true,c:BLUE}); txt(fields.fcarga||'—',M+6,y-21,{sz:12,b:true});
-  txt('FECHA DE ENTREGA / DESCARGA',M+RW/2+10,y-9,{sz:7,b:true,c:GREEN}); txt(fields.fentrega||'—',M+RW/2+10,y-21,{sz:12,b:true});
-  y-=38;
-  let idx=0;
-  for(const o of pedidos){
-    need(34);
-    page.drawRectangle({x:M,y:y-18,width:RW,height:18,color:BLUE});
-    txt((o.docExt||o.pedido||'')+'   '+(o.tienda||''),M+6,y-13,{sz:10,b:true,c:rgb(1,1,1)});
-    txt('Pedido '+(o.pedido||''),M+RW-120,y-13,{sz:8,c:rgb(0.85,0.9,0.95)});
-    y-=24;
-    o.lineas.forEach((l,li)=>{
-      need(16);
-      const cb=form.createCheckBox('p'+idx+'_l'+li);
-      cb.addToPage(page,{x:M+4,y:y-12,width:12,height:12,borderColor:GRAY,borderWidth:1});
-      const emb = esSaco(l)? (l.embalaje||((l.palet||0)+' palet')) : (l.cantidad+' ud');
-      txt(l.codigo||'',M+24,y-9,{sz:9,b:true});
-      let d=(l.descripcion||''); if(d.length>52)d=d.slice(0,51)+'…';
-      txt(d,M+92,y-9,{sz:9});
-      txt(String(l.cantidad),M+RW-90,y-9,{sz:9,b:true});
-      txt(emb,M+RW-55,y-9,{sz:8,c:GRAY});
+  const newPage=()=>{page=pdf.addPage(A4);y=A4[1]-M;};
+  const ensure=h=>{if(y-h<M)newPage();};
+  const W=(s,sz,b)=>(b?fontB:font).widthOfTextAtSize(String(s==null?'':s),sz);
+  const fit=(s,maxW,sz,b)=>{s=String(s==null?'':s);if(W(s,sz,b)<=maxW)return s;while(s.length>1&&W(s+'…',sz,b)>maxW)s=s.slice(0,-1);return s+'…';};
+  const T=(s,x,yy,o)=>{o=o||{};let str=String(s==null?'':s);const sz=o.sz||9,b=!!o.b;if(o.maxW)str=fit(str,o.maxW,sz,b);let xx=x;if(o.al==='right')xx=x-W(str,sz,b);else if(o.al==='center')xx=x-W(str,sz,b)/2;page.drawText(str,{x:xx,y:yy,size:sz,font:b?fontB:font,color:o.c||BLACK});};
+  const rect=(x,yy,w,h,o)=>{o=o||{};page.drawRectangle({x,y:yy,width:w,height:h,color:o.fill,borderColor:o.border,borderWidth:o.bw||0});};
+  const hline=(x1,x2,yy,c)=>page.drawLine({start:{x:x1,y:yy},end:{x:x2,y:yy},thickness:0.5,color:c||LINE});
+
+  // ── Cabecera ──
+  T('HOJA DE PREPARACIÓN · CAMIÓN',M,y-9,{sz:8,b:true,c:BLUE});
+  T(destino,M,y-26,{sz:19,b:true,c:BLUED,maxW:RW-150});
+  // KPIs a la derecha
+  const kpis=[['Pedidos',String(pedidos.length)],['Palets+Mini',totPaletsEff+'+'+tot.mini+'m'],['Kg',nf(tot.kgs)],['m3',nf(tot.m3,1)]];
+  let kx=A4[0]-M; const kw=58;
+  for(let i=kpis.length-1;i>=0;i--){T(kpis[i][1],kx,y-16,{sz:13,b:true,al:'right',c:i===1?BLUE:BLACK});T(kpis[i][0],kx,y-27,{sz:7,al:'right',c:GRAYT3});kx-=kw;}
+  T(pedidos.length+' pedidos · Cliente LEROY MERLIN · '+hoy,M,y-40,{sz:8,c:GRAYT});
+  y-=46; hline(M,A4[0]-M,y,BLACK); y-=14;
+
+  // ── Banda de fechas ──
+  const fbh=30, half=RW/2-5;
+  rect(M,y-fbh,half,fbh,{fill:BLUEBG,border:BLUE,bw:1.3});
+  rect(M+half+10,y-fbh,half,fbh,{fill:GREENL,border:GREEN,bw:1.3});
+  T('FECHA DE CARGA',M+8,y-11,{sz:7.5,b:true,c:BLUED});
+  T(fields.fcarga||'—',M+8,y-24,{sz:15,b:true});
+  T('FECHA DE ENTREGA / DESCARGA',M+half+18,y-11,{sz:7.5,b:true,c:GREEN});
+  T(fields.fentrega||'—',M+half+18,y-24,{sz:15,b:true});
+  y-=fbh+16;
+
+  // ── helper: slab ──
+  const slab=(t,c)=>{ensure(22);T(t.toUpperCase(),M,y-9,{sz:9,b:true,c:c||BLUED});y-=13;hline(M,A4[0]-M,y,LINE);y-=12;};
+  // ── helper: subslab (texto rojo/ámbar de sección) ──
+  const sub=(t,c)=>{ensure(16);T(t,M,y-9,{sz:8.5,b:true,c:c||BLUED});y-=15;};
+
+  // ── helper: tabla genérica ──
+  function table(cols,headers,rows,o){
+    o=o||{};
+    const colX=[]; let cx=M; cols.forEach(c=>{colX.push(cx);cx+=c.w;});
+    const drawHead=()=>{
+      rect(M,y-15,RW,15,{fill:HEAD});
+      headers.forEach((h,i)=>{const c=cols[i];const al=c.al||'left';const tx=al==='right'?colX[i]+c.w-4:al==='center'?colX[i]+c.w/2:colX[i]+4;T(h,tx,y-10,{sz:7.5,b:true,c:GRAYT,al});});
       y-=15;
+    };
+    ensure(15+14); drawHead();
+    rows.forEach(r=>{
+      const rh=o.rh||14; ensure(rh+(o.foot?14:0));
+      if(y-rh<M){ newPage(); drawHead(); }
+      r.forEach((cell,i)=>{const c=cols[i];const al=c.al||'left';const tx=al==='right'?colX[i]+c.w-4:al==='center'?colX[i]+c.w/2:colX[i]+4;T(cell.t!==undefined?cell.t:cell,tx,y-10,{sz:cell.sz||8.5,b:cell.b,c:cell.c||BLACK,al,maxW:c.w-6});});
+      y-=rh; hline(M,A4[0]-M,y,rgb(0.9,0.92,0.95));
     });
-    need(16);
-    const done=form.createCheckBox('p'+idx+'_done');
-    done.addToPage(page,{x:M+4,y:y-12,width:13,height:13,borderColor:GREEN,borderWidth:1.5});
-    txt('Pedido preparado y revisado',M+24,y-9,{sz:9,b:true,c:GREEN});
-    y-=22;
-    page.drawLine({start:{x:M,y:y+6},end:{x:M+RW,y:y+6},thickness:0.5,color:LINE});
-    y-=4; idx++;
+    if(o.footL||o.footR){ ensure(15); rect(M,y-15,RW,15,{fill:rgb(0.93,0.94,0.96)}); if(o.footL)T(o.footL,M+4,y-10,{sz:8.5,b:true}); if(o.footR)T(o.footR,A4[0]-M-4,y-10,{sz:8,b:true,al:'right'}); y-=15; }
+    y-=4;
+  }
+
+  // ════ RESUMEN DE MATERIAL ════
+  slab('Resumen de material · qué sacar del almacén');
+  // Palets
+  sub('Palets · etiquetar y cargar');
+  table(
+    [{w:RW*0.13},{w:RW*0.40},{w:RW*0.10,al:'right'},{w:RW*0.11,al:'right'},{w:RW*0.09,al:'right'},{w:RW*0.10,al:'right'},{w:RW*0.07,al:'right'}],
+    ['CÓDIGO','PRODUCTO','CANTIDAD','KGS','M3','BULTOS','PED.'],
+    paletProds.map(p=>[{t:p.codigo,sz:8},{t:p.desc},{t:nf(p.cant),b:true},{t:nf(p.kgs)},{t:nf(p.m3,2)},{t:bultosLbl(p),b:true},{t:String(p.peds.size),c:GRAYT3}]),
+    {footL:'Total palets material',footR:nf(tot.kgs)+' kg  ·  '+nf(tot.m3,2)+' m3  ·  '+tot.palet+' PAL + '+tot.mini+' MINI'+(totBultosPalets?' (+'+totBultosPalets+' de bultos)':'')}
+  );
+  // Bultos
+  if(bultoProds.length){
+    sub('Bultos');
+    table(
+      [{w:RW*0.14},{w:RW*0.44},{w:RW*0.12,al:'right'},{w:RW*0.12,al:'right'},{w:RW*0.12,al:'right'},{w:RW*0.06,al:'right'}],
+      ['CÓDIGO','PRODUCTO','CANTIDAD','BULTOS','KGS','PED.'],
+      bultoProds.map(p=>{const nb=prepConv[p.codigo]>0?p.cant/prepConv[p.codigo]:p.cant;return [{t:p.codigo,sz:8},{t:p.desc},{t:nf(p.cant),b:true},{t:nbf(nb),b:true},{t:nf(p.kgs)},{t:String(p.peds.size),c:GRAYT3}];}),
+      {footL:'Total bultos',footR:nf(bCant)+' ud  ·  '+nbf(bultoProds.reduce((s,p)=>s+(prepConv[p.codigo]>0?p.cant/prepConv[p.codigo]:p.cant),0))+' bultos  ·  '+nf(bKgs)+' kg'}
+    );
+  }
+
+  // ════ MONTAJE ════
+  slab('Montaje · cómo se carga');
+  // tarjetas
+  const cards=[['Palets sueltos · etiquetar',totSueltos+'  (+'+tot.mini+' mini)'],['Enfardados · 1 palet + bultos',String(totEnf)],['Bultos a cargar',nbf(totBultosCargados)]];
+  if(nBP)cards.push(['Palets de bultos · 10+',String(nBP)]);
+  const cardW=(RW-(cards.length-1)*8)/cards.length;
+  ensure(40);
+  cards.forEach((c,i)=>{const x=M+i*(cardW+8);rect(x,y-36,cardW,36,{fill:BG,border:LINE,bw:1});T(c[1],x+8,y-18,{sz:15,b:true,c:BLUED});T(c[0],x+8,y-30,{sz:6.8,c:GRAYT,maxW:cardW-12});});
+  y-=44;
+  // enfardados
+  if(nEnf){
+    sub('Enfardados · 1 palet base + bultos encima');
+    table([{w:RW*0.16},{w:RW*0.24},{w:RW*0.46},{w:RW*0.14,al:'right'}],
+      ['REF. LEROY','TIENDA','PALET BASE + BULTOS A ENFARDAR','Nº BULTOS'],
+      pedEnf.map(o=>[{t:o.docExt||o.pedido,sz:8},{t:o.tienda},{t:'1 palet de '+(o._base?o._base.descripcion:'sacos')+' + bultos'},{t:nbf(o._nb),b:true}]),{rh:14});
+  }
+  // bultos sueltos
+  if(nBS){
+    sub('Bultos sueltos · sin palet (cargar aparte)');
+    table([{w:RW*0.16},{w:RW*0.24},{w:RW*0.46},{w:RW*0.14,al:'right'}],
+      ['REF. LEROY','TIENDA','BULTOS A CARGAR SUELTOS','Nº BULTOS'],
+      pedBS.map(o=>[{t:o.docExt||o.pedido,sz:8},{t:o.tienda},{t:o._bultoLines.map(l=>nbf(bultosDe(l))+' '+l.descripcion).join(' · ')},{t:nbf(o._nb),b:true}]),
+      {rh:14,footL:'Total bultos sueltos',footR:nbf(totBS)+' bultos'});
+  }
+  // palets de bultos
+  if(nBP){
+    sub('Palets de bultos · pedidos con 10+ bultos (montar 1 palet)', AMBERLN);
+    table([{w:RW*0.16},{w:RW*0.24},{w:RW*0.46},{w:RW*0.14,al:'right'}],
+      ['REF. LEROY','TIENDA','BULTOS A MONTAR EN PALET','RESULTADO'],
+      pedBP.map(o=>[{t:o.docExt||o.pedido,sz:8},{t:o.tienda},{t:o._bultoLines.map(l=>nbf(bultosDe(l))+' '+l.descripcion).join(' · ')},{t:nbf(o._nb)+' -> 1 palet',b:true}]),{rh:14});
+  }
+  // total a cargar
+  ensure(20);
+  rect(M,y-18,RW,18,{fill:BLUED});
+  T('A cargar en el camión',M+8,y-12,{sz:9.5,b:true,c:WHITE});
+  T(totPaletsEff+' palets'+(tot.mini?' + '+tot.mini+' mini':'')+'  ·  '+nbf(totBultosCargados)+' bultos'+(totBultosPalets?'  ·  incluye '+totBultosPalets+' palet(s) de bultos':'')+'  ·  '+nf(tot.kgs)+' kg',A4[0]-M-8,y-12,{sz:8.5,b:true,c:WHITE,al:'right'});
+  y-=26;
+
+  // ════ PREPARACIÓN POR PEDIDO ════
+  slab('Preparación por pedido · revisar uno a uno');
+  const grupos=[{k:'otros',t:'Solo bultos sueltos · sin palet'},{k:'mixto',t:'Palets + bultos · coger material aparte'},{k:'solo',t:'Solo palets'}];
+  let pi=0;
+  for(const g of grupos){
+    const arr=pedidos.filter(o=>o._tipoEff===g.k);
+    if(!arr.length)continue;
+    sub(g.t+' · '+arr.length+' pedido'+(arr.length!==1?'s':''), BLUE);
+    for(const o of arr){
+      const marcar=o._tipo!=='solo';
+      // cabecera del pedido
+      ensure(30);
+      rect(M,y-26,RW,26,{fill:rgb(0.16,0.18,0.2)});
+      T(String(o._i+1).padStart(2,'0'),M+8,y-12,{sz:9,b:true,c:rgb(0.95,0.6,0.3)});
+      T(o.pedido||'',M+26,y-12,{sz:10,b:true,c:WHITE,maxW:140});
+      const htag=o._bultosPalet?'BULTOS -> PALET':o._tipo==='solo'?'SOLO SACOS':o._tipo==='mixto'?'SACOS + OTROS':'SIN SACOS';
+      T(htag,M+26,y-22,{sz:6.5,b:true,c:rgb(0.75,0.82,0.9)});
+      T(o.tienda||'—',M+150,y-12,{sz:10,b:true,c:WHITE,maxW:160});
+      T('Ref. Leroy Merlin',A4[0]-M-8,y-9,{sz:6.5,c:rgb(0.7,0.76,0.84),al:'right'});
+      T(o.docExt||'—',A4[0]-M-8,y-21,{sz:13,b:true,c:WHITE,al:'right'});
+      y-=26;
+      // tabla de líneas con casilla
+      const cols=[{w:24,al:'center'},{w:RW*0.16},{w:RW*0.40},{w:RW*0.13,al:'right'},{w:RW*0.12,al:'right'},{w:RW*0.15,al:'right'}];
+      const colX=[];let cx=M;cols.forEach(c=>{colX.push(cx);cx+=c.w;});
+      // head
+      ensure(14); rect(M,y-13,RW,13,{fill:HEAD});
+      ['','CÓDIGO','DESCRIPCIÓN','CANT.','KGS','BULTOS'].forEach((h,i)=>{const al=cols[i].al||'left';const tx=al==='right'?colX[i]+cols[i].w-4:al==='center'?colX[i]+cols[i].w/2:colX[i]+4;T(h,tx,y-9,{sz:7,b:true,c:GRAYT,al});});
+      y-=13;
+      o.lineas.forEach((l,li)=>{
+        const rh=15; ensure(rh);
+        if(y-rh<M){ newPage(); }
+        const extra=marcar&&!esSaco(l);
+        if(extra) rect(M,y-rh,RW,rh,{fill:rgb(0.996,0.953,0.886)});
+        // casilla
+        const cb=form.createCheckBox('p'+pi+'_l'+li);
+        cb.addToPage(page,{x:colX[0]+cols[0].w/2-6,y:y-12,width:11,height:11,borderColor:GRAYT,borderWidth:1});
+        T(l.codigo||'',colX[1]+4,y-10,{sz:8.5,b:true,maxW:cols[1].w-6});
+        let desc=l.descripcion||''; const tg=extra?(o._bultosPalet?'  -> palet':'  + aparte'):'';
+        T(fit(desc,cols[2].w-6-W(tg,7,true),9,false)+(tg?'':''),colX[2]+4,y-10,{sz:9});
+        if(tg)T(tg.trim(),colX[2]+4+W(fit(desc,cols[2].w-6-W(tg,7,true),9,false),9,false)+4,y-10,{sz:6.5,b:true,c:AMBERLN});
+        T(nf(l.cantidad),colX[3]+cols[3].w-4,y-10,{sz:8.5,b:true,al:'right'});
+        T(nf(l.kgs),colX[4]+cols[4].w-4,y-10,{sz:8.5,al:'right'});
+        T(esSaco(l)?(l.embalaje||'—'):(nbf(bultosDe(l))+' bulto'+(bultosDe(l)!==1?'s':'')),colX[5]+cols[5].w-4,y-10,{sz:8,al:'right',c:GRAYT});
+        y-=rh; hline(M,A4[0]-M,y,rgb(0.9,0.92,0.95));
+      });
+      // pie: casilla "pedido preparado y revisado" + nota
+      ensure(18);
+      const done=form.createCheckBox('p'+pi+'_done');
+      done.addToPage(page,{x:M+4,y:y-14,width:12,height:12,borderColor:GREEN,borderWidth:1.5});
+      T('Pedido preparado y revisado',M+22,y-11,{sz:8.5,b:true,c:GREEN});
+      const nota=o._bultosPalet?('Montar 1 palet con los '+nbf(o._nb)+' bultos'+(o._palets?' · + '+o._palets+' palet(s) de sacos':'')):o._bultosOnly?'Bultos sueltos · sin palet, cargar aparte':o._enf?('Montar: 1 palet de '+(o._base?o._base.descripcion:'sacos')+' enfardado con los bultos'+(o._sueltos?' · '+o._sueltos+' palet(s) suelto(s)':'')):'';
+      if(nota)T(nota,A4[0]-M-8,y-11,{sz:7.5,c:GRAYT,al:'right',maxW:RW-200});
+      y-=20; hline(M,A4[0]-M,y,LINE); y-=8;
+      pi++;
+    }
   }
   return await pdf.save();
 }
@@ -1122,12 +1302,12 @@ async function prepDescargarChecklistPDF(){
   log('Generando checklist rellenable...');
   try{
     await prepLoadPdfLib();
-    const bytes=await buildChecklistPDF(prepPedidos, prepFields());
+    const bytes=await buildHojaPDF(prepPedidos, prepFields());
     const blob=new Blob([bytes],{type:'application/pdf'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
-    a.href=url; a.download='Checklist preparacion '+hoy+'.pdf'; a.click();
+    a.href=url; a.download='Hoja preparacion rellenable '+hoy+'.pdf'; a.click();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     log('Checklist rellenable descargado');
   }catch(e){ log('Error generando checklist: '+e.message); }
