@@ -931,7 +931,19 @@ function prepRender(pedidos){
   </div>`;
 }
 
-function prepImprimir(){ window.print(); }
+// Etiqueta de fecha para nombres de archivo: SIEMPRE la fecha de entrega (si falta, la de hoy)
+function prepFechaArchivo(){
+  const f=prepFields();
+  const fe=(f.fentrega||'').trim();
+  if(fe) return 'entrega '+fe.replace(/[\/.]/g,'-');
+  return new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
+}
+function prepImprimir(){
+  const prev=document.title;
+  document.title='Hoja preparacion '+prepFechaArchivo();
+  window.print();
+  setTimeout(()=>{document.title=prev;},1000);
+}
 
 // ── ALBARANES (rellenar columna ALB.) ────────────────────────────────────────
 const normRef = v => String(parseInt(String(v).replace(/\D/g,''),10)||'');
@@ -1056,7 +1068,7 @@ async function prepDescargarPDF(){
     await prepLoadJsPDF();
     const doc=buildPlanillaPDF(prepPedidos);
     const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
-    doc.save('Planilla preparacion '+hoy+'.pdf');
+    doc.save('Planilla preparacion '+prepFechaArchivo()+'.pdf');
     log('PDF descargado');
   }catch(e){ log('Error generando PDF: '+e.message); }
 }
@@ -1123,7 +1135,7 @@ async function prepDescargarChecklistPDF(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     const hoy=new Date().toLocaleDateString('es-ES').replace(/\//g,'-');
-    a.href=url; a.download='Hoja preparacion rellenable '+hoy+'.pdf'; a.click();
+    a.href=url; a.download='Hoja preparacion rellenable '+prepFechaArchivo()+'.pdf'; a.click();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     log('Hoja rellenable descargada');
   }catch(e){ log('Error generando hoja rellenable: '+e.message); }
