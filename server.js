@@ -19,9 +19,6 @@ const BC_TENANT  = process.env.BC_TENANT_ID;
 const BC_CLIENT  = process.env.BC_CLIENT_ID;
 const BC_SECRET  = process.env.BC_SECRET;
 
-console.log('BC_TENANT:', BC_TENANT);
-console.log('BC_CLIENT:', BC_CLIENT);
-console.log('BC_SECRET length:', BC_SECRET?.length);
 const BC_COMPANY_ID = process.env.BC_COMPANY_ID || ''; // filled after first call
 let bcToken = null, bcTokenExp = 0;
 
@@ -37,7 +34,7 @@ async function getBCToken(){
       path:`/${BC_TENANT}/oauth2/v2.0/token`,
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}
-    },r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>res(JSON.parse(d)));});
+    },r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{res(JSON.parse(d));}catch(e){rej(new Error('Respuesta no válida del proveedor de identidad ('+r.statusCode+')'));}});});
     req.on('error',rej);req.write(body);req.end();
   });
   if(data.error) throw new Error(data.error_description);
@@ -234,12 +231,6 @@ function parseEDI(text){
     const totalMatch = block.match(/TOTAL GENERAL\s+([\d,\.]+)\s+EUR/);
     const total_eur = totalMatch ? parseFloat(totalMatch[1].replace(',','.')) : null;
 
-    console.log('Block num_pedido:', numMatch[1]);
-    console.log('Block length:', block.length);
-    console.log('Has REF F:', block.includes('REF F'));
-    console.log('Has TOTAL GENERAL:', block.includes('TOTAL GENERAL'));
-    console.log('Lines in block:', block.split('\n').length);
-
     // Lineas: solo procesar las que están después de la cabecera REF F.-EAN
     const lineas = [];
     const lines = block.split('\n');
@@ -306,8 +297,6 @@ app.post('/api/edi/parse', async (req, res) => {
   try {
     const { texto } = req.body;
     if(!texto) return res.status(400).json({error:'No se recibió texto'});
-    console.log('EDI texto length:', texto.length);
-    console.log('EDI primeros 200:', JSON.stringify(texto.substring(0,200)));
     const pedidos = parseEDI(texto);
     console.log('Pedidos encontrados:', pedidos.length);
     if(!pedidos.length) return res.status(400).json({error:'No se encontraron pedidos en el texto'});
@@ -384,7 +373,8 @@ app.get('/api/bc/items/:ref', async (req, res) => {
   try {
     const comp = (await pool.query('SELECT company_id FROM bc_company_cache LIMIT 1')).rows[0];
     if(!comp) return res.status(400).json({error:'Company no cargada'});
-    const data = await bcGet(`/v2.0/${BC_TENANT}/production/api/v2.0/companies(${comp.company_id})/items?$filter=number eq '${encodeURIComponent(req.params.ref)}'&$select=id,number,displayName`);
+    const refEsc = encodeURIComponent(String(req.params.ref).replace(/'/g,"''"));
+    const data = await bcGet(`/v2.0/${BC_TENANT}/production/api/v2.0/companies(${comp.company_id})/items?$filter=number eq '${refEsc}'&$select=id,number,displayName`);
     res.json(data.value);
   } catch(e) { res.status(502).json({error:e.message}); }
 });
