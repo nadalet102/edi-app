@@ -303,7 +303,7 @@ textarea:focus{border-color:var(--blue)}
     <div style="padding:14px 16px">
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Sube el PDF con todos los pedidos del camión (Informe de documentos de venta de BC). Se genera el resumen de material y la hoja de preparación para imprimir.</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0])"></label>
+        <label class="btn btn-primary" style="cursor:pointer"><i class="ti ti-file-upload"></i> Seleccionar PDF<input type="file" id="prep-file" accept="application/pdf" style="display:none" onchange="prepCargar(this.files[0]);this.value=''"></label>
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
         <button class="btn btn-outline" id="prep-check-btn" onclick="prepDescargarChecklistPDF()" style="display:none"><i class="ti ti-checkbox"></i> PDF rellenable (hoja)</button>
@@ -325,7 +325,7 @@ textarea:focus{border-color:var(--blue)}
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--text2)">Albaranes (opcional, para rellenar la columna ALB.):</span>
-        <label class="btn btn-outline btn-sm" style="cursor:pointer"><i class="ti ti-file-upload"></i> PDF de albaranes<input type="file" id="prep-alb-file" accept="application/pdf" style="display:none" onchange="prepCargarAlbaranes(this.files[0])"></label>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer"><i class="ti ti-file-upload"></i> PDF de albaranes<input type="file" id="prep-alb-file" accept="application/pdf" style="display:none" onchange="prepCargarAlbaranes(this.files[0]);this.value=''"></label>
         <span id="prep-alb-info" style="font-size:12px;color:var(--green)"></span>
       </div>
     </div>
