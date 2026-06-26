@@ -99,6 +99,9 @@ textarea:focus{border-color:var(--blue)}
 .cal-dia.finde{background:#f3f4f6}
 .cal-dia.hoy.finde{background:#eaf2fb}
 .cal-dnum{font-size:12px;font-weight:700;color:var(--text2)}
+.cal-dhdr{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.cal-add{border:none;background:var(--blue-l);color:var(--blue-d);font-weight:800;font-size:14px;line-height:1;min-width:20px;height:20px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.cal-add:hover{background:var(--blue);color:#fff}
 .cal-dia.hoy .cal-dnum{color:var(--blue-d)}
 .cal-ev{font-size:11px;line-height:1.3;padding:4px 6px;border-radius:6px;border-left:3px solid;font-weight:600;cursor:pointer;overflow:hidden}
 .cal-ev.lista{background:var(--green-l);border-color:var(--green);color:#1d5429}
@@ -1380,7 +1383,7 @@ async function calRender(){
       const estadoTag=c.hecha?'':(lista?'':`<span class="ev-tag falta" title="Falta: ${falta.join(' y ')}">falta ${falta.join('/')}</span>`);
       return `<div class="cal-ev ${cls}" onclick="event.stopPropagation();calEditar(${c.id})">${c.hora?`<span class="ev-h">${c.hora}</span> `:''}${c.titulo}${c.prep_id?' <i class="ti ti-clipboard-check" title="Preparación vinculada"></i>':''} ${citaTag}${estadoTag}</div>`;
     }).join('');
-    cells+=`<div class="cal-dia${fuera?' fuera':''}${iso===hoyISO?' hoy':''}${finde?' finde':''}" onclick="calNueva('${iso}')"><div class="cal-dnum">${d.getDate()}</div>${evs}</div>`;
+    cells+=`<div class="cal-dia${fuera?' fuera':''}${iso===hoyISO?' hoy':''}${finde?' finde':''}" onclick="calNueva('${iso}')"><div class="cal-dhdr"><span class="cal-dnum">${d.getDate()}</span><button class="cal-add" onclick="event.stopPropagation();calNueva('${iso}')" title="Añadir otra carga este día">+</button></div>${evs}</div>`;
   }
   document.getElementById('cal-grid').innerHTML=sem+'<div class="cal-mes">'+cells+'</div>';
   window._calCargas=cargas;
