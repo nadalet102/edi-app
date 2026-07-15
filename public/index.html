@@ -215,6 +215,7 @@ textarea:focus{border-color:var(--blue)}
   <div class="tab" id="tab-unir" onclick="switchTab('unir')"><i class="ti ti-list-numbers"></i> Unir pedidos</div>
   <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
   <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
+  <div class="tab" id="tab-total" onclick="switchTab('total')"><i class="ti ti-sum"></i> Totalización</div>
 </div>
 
 <!-- IMPORTAR -->
@@ -401,6 +402,22 @@ textarea:focus{border-color:var(--blue)}
   </div>
 </div>
 
+<!-- TOTALIZACIÓN -->
+<div class="view" id="view-total">
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="ti ti-sum"></i> Material por servir · totalización de cargas</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" id="total-hechas" onchange="totalToggleHechas(this)" style="width:15px;height:15px;accent-color:var(--blue)"> Incluir cargas hechas</label>
+        <button class="btn btn-outline btn-sm" onclick="totalRender()"><i class="ti ti-refresh"></i> Actualizar</button>
+        <button class="btn btn-outline btn-sm" id="total-csv-btn" onclick="totalDescargarCSV()" style="display:none"><i class="ti ti-download"></i> CSV</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin:0 0 10px">Suma de todos los artículos pendientes de servir de las cargas del calendario (las que tienen preparación vinculada y no están marcadas como hechas). Total por artículo y desglose por día.</div>
+    <div id="total-cont"><div class="empty"><i class="ti ti-loader"></i>Cargando...</div></div>
+  </div>
+</div>
+
 <div class="statusbar"><i class="ti ti-info-circle"></i><span id="sb-msg">Listo</span></div>
 
 <script>
@@ -426,7 +443,7 @@ function log(msg, type=''){
 }
 
 function switchTab(t){
-  ['import','mapeos','hist','unir','prep','cal'].forEach(id=>{
+  ['import','mapeos','hist','unir','prep','cal','total'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -434,6 +451,7 @@ function switchTab(t){
   if(t==='hist') loadHistorial();
   if(t==='prep') prepCargarGuardadas();
   if(t==='cal') calRender();
+  if(t==='total') totalRender();
 }
 
 // ── PARSE EDI ────────────────────────────────────────────────────────────────
@@ -1477,6 +1495,133 @@ async function calBorrar(){
   if(!confirm('¿Eliminar esta carga del calendario?'))return;
   try{ await api('DELETE','/cargas/'+calEditId); calCerrarForm(); calRender(); log('Carga eliminada'); }
   catch(e){ log('Error eliminando'); }
+}
+
+// ── TOTALIZACIÓN DE MATERIAL POR SERVIR ──────────────────────────────────────
+let totalIncluirHechas=false;
+let totalUltimo=null; // datos del último cálculo (para CSV)
+function totalToggleHechas(cb){ totalIncluirHechas=!!cb.checked; totalRender(); }
+const totalEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const totalNf=(n,d=0)=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+function totalFechaLarga(iso){
+  if(!iso)return 'Sin fecha';
+  const d=new Date(iso+'T00:00:00'); if(isNaN(d))return iso;
+  const s=d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+async function totalRender(){
+  const cont=document.getElementById('total-cont');
+  const csvBtn=document.getElementById('total-csv-btn'); if(csvBtn)csvBtn.style.display='none';
+  totalUltimo=null;
+  cont.innerHTML='<div class="empty"><i class="ti ti-loader"></i>Calculando material por servir...</div>';
+  try{
+    await prepCargarConversiones(); // para calcular bultos igual que en la hoja
+    const cargas=await api('GET','/cargas');
+    const pend=(cargas||[]).filter(c=>c.prep_id && (totalIncluirHechas || !c.hecha));
+    if(!pend.length){
+      cont.innerHTML='<div class="empty" style="padding:30px"><i class="ti ti-checks"></i>No hay cargas '+(totalIncluirHechas?'':'pendientes ')+'con preparación vinculada.</div>';
+      return;
+    }
+    // Cargar los datos completos de cada preparación (una sola vez por id)
+    const ids=[...new Set(pend.map(c=>Number(c.prep_id)).filter(Number.isInteger))];
+    const preps={};
+    await Promise.all(ids.map(async id=>{ try{ const r=await api('GET','/preparaciones/'+id); preps[id]=r.datos||{}; }catch(e){ preps[id]=null; } }));
+
+    const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion||'');
+    const bultosDe=l=>{const u=prepConv[l.codigo]; return u>0? (l.cantidad||0)/u : (l.cantidad||0);};
+    const global={};   // codigo -> acumulado global
+    const porDia={};   // fechaISO -> {fecha, ncargas, cant, palet, mini, bultos, art:{}}
+
+    pend.forEach(c=>{
+      const d=preps[Number(c.prep_id)];
+      const fecha=String(c.fecha||'').substring(0,10);
+      const pd=porDia[fecha]||(porDia[fecha]={fecha,ncargas:0,cant:0,palet:0,mini:0,bultos:0,art:{}});
+      pd.ncargas++;
+      if(!d||!Array.isArray(d.pedidos))return;
+      d.pedidos.forEach(o=>(o.lineas||[]).forEach(l=>{
+        const g=global[l.codigo]||(global[l.codigo]={codigo:l.codigo,desc:l.descripcion||'',cant:0,palet:0,mini:0,kgs:0,m3:0,bultos:0,dias:new Set()});
+        g.cant+=l.cantidad||0; g.palet+=l.palet||0; g.mini+=l.mini||0; g.kgs+=l.kgs||0; g.m3+=l.m3||0;
+        if(!esSaco(l)) g.bultos+=bultosDe(l);
+        if((l.descripcion||'').length>g.desc.length) g.desc=l.descripcion;
+        g.dias.add(fecha);
+        const a=pd.art[l.codigo]||(pd.art[l.codigo]={codigo:l.codigo,desc:l.descripcion||'',cant:0,palet:0,mini:0,bultos:0});
+        a.cant+=l.cantidad||0; a.palet+=l.palet||0; a.mini+=l.mini||0;
+        if(!esSaco(l)) a.bultos+=bultosDe(l);
+        if((l.descripcion||'').length>a.desc.length) a.desc=l.descripcion;
+        pd.cant+=l.cantidad||0; pd.palet+=l.palet||0; pd.mini+=l.mini||0;
+        if(!esSaco(l)) pd.bultos+=bultosDe(l);
+      }));
+    });
+
+    const arts=Object.values(global).sort((a,b)=>b.palet-a.palet||b.cant-a.cant||String(a.codigo).localeCompare(b.codigo));
+    const dias=Object.values(porDia).sort((a,b)=>String(a.fecha).localeCompare(b.fecha));
+    const totCant=arts.reduce((s,a)=>s+a.cant,0);
+    const totPal=arts.reduce((s,a)=>s+a.palet,0);
+    const totMini=arts.reduce((s,a)=>s+a.mini,0);
+    const totBultos=arts.reduce((s,a)=>s+a.bultos,0);
+    totalUltimo={arts,dias};
+
+    // ── Resumen ──
+    const kpi=(v,lbl)=>`<div style="flex:1;min-width:110px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px"><div style="font-size:22px;font-weight:800;color:var(--blue-d);line-height:1.1">${v}</div><div style="font-size:11px;color:var(--text2);margin-top:2px">${lbl}</div></div>`;
+    let html='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'
+      +kpi(pend.length,'cargas por servir')
+      +kpi(dias.length,'días')
+      +kpi(arts.length,'artículos distintos')
+      +kpi(totalNf(totCant),'unidades totales')
+      +kpi(totalNf(totPal)+(totMini?' + '+totalNf(totMini)+' mini':''),'palets')
+      +kpi(totalNf(totBultos,2),'bultos aprox.')
+      +'</div>';
+
+    // ── Resumen por día ──
+    html+='<div style="font-weight:700;color:var(--blue-d);margin:6px 0 8px;font-size:14px"><i class="ti ti-calendar-stats"></i> Por día</div>';
+    html+='<table class="lineas-table" style="margin-bottom:18px"><thead><tr><th>Día</th><th style="text-align:right">Cargas</th><th style="text-align:right">Palets</th><th style="text-align:right">Mini</th><th style="text-align:right">Unidades</th><th style="text-align:right">Bultos</th></tr></thead><tbody>';
+    dias.forEach(pd=>{
+      html+=`<tr><td><b>${totalEsc(totalFechaLarga(pd.fecha))}</b></td><td style="text-align:right">${pd.ncargas}</td><td style="text-align:right">${totalNf(pd.palet)}</td><td style="text-align:right">${totalNf(pd.mini)}</td><td style="text-align:right">${totalNf(pd.cant)}</td><td style="text-align:right">${totalNf(pd.bultos,2)}</td></tr>`;
+    });
+    html+=`<tr style="background:var(--blue-l);font-weight:800"><td>TOTAL</td><td style="text-align:right">${pend.length}</td><td style="text-align:right">${totalNf(totPal)}</td><td style="text-align:right">${totalNf(totMini)}</td><td style="text-align:right">${totalNf(totCant)}</td><td style="text-align:right">${totalNf(totBultos,2)}</td></tr>`;
+    html+='</tbody></table>';
+
+    // ── Total por artículo ──
+    html+='<div style="font-weight:700;color:var(--blue-d);margin:6px 0 8px;font-size:14px"><i class="ti ti-package"></i> Total por artículo</div>';
+    html+='<table class="lineas-table"><thead><tr><th>Código</th><th>Descripción</th><th style="text-align:right">Unidades</th><th style="text-align:right">Palets</th><th style="text-align:right">Mini</th><th style="text-align:right">Bultos</th><th style="text-align:right">Días</th></tr></thead><tbody>';
+    arts.forEach(a=>{
+      html+=`<tr><td style="font-family:monospace;white-space:nowrap">${totalEsc(a.codigo)}</td><td>${totalEsc(a.desc)}</td><td style="text-align:right;font-weight:700">${totalNf(a.cant)}</td><td style="text-align:right">${a.palet?totalNf(a.palet):'—'}</td><td style="text-align:right">${a.mini?totalNf(a.mini):'—'}</td><td style="text-align:right">${a.bultos?totalNf(a.bultos,2):'—'}</td><td style="text-align:right;color:var(--text3)">${a.dias.size}</td></tr>`;
+    });
+    html+='</tbody></table>';
+
+    // ── Desglose por día (detalle de artículos) ──
+    html+='<div style="font-weight:700;color:var(--blue-d);margin:22px 0 8px;font-size:14px"><i class="ti ti-list-details"></i> Detalle por día</div>';
+    dias.forEach(pd=>{
+      const lista=Object.values(pd.art).sort((a,b)=>b.palet-a.palet||b.cant-a.cant);
+      html+=`<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 12px;background:var(--surface2);font-weight:700;color:var(--blue-d)">${totalEsc(totalFechaLarga(pd.fecha))} · ${pd.ncargas} carga(s) · ${totalNf(pd.palet)} palets · ${totalNf(pd.cant)} uds · ${lista.length} artículos</summary>
+        <table class="lineas-table"><thead><tr><th>Código</th><th>Descripción</th><th style="text-align:right">Unidades</th><th style="text-align:right">Palets</th><th style="text-align:right">Mini</th><th style="text-align:right">Bultos</th></tr></thead><tbody>`;
+      lista.forEach(a=>{
+        html+=`<tr><td style="font-family:monospace;white-space:nowrap">${totalEsc(a.codigo)}</td><td>${totalEsc(a.desc)}</td><td style="text-align:right;font-weight:700">${totalNf(a.cant)}</td><td style="text-align:right">${a.palet?totalNf(a.palet):'—'}</td><td style="text-align:right">${a.mini?totalNf(a.mini):'—'}</td><td style="text-align:right">${a.bultos?totalNf(a.bultos,2):'—'}</td></tr>`;
+      });
+      html+='</tbody></table></details>';
+    });
+
+    cont.innerHTML=html;
+    if(csvBtn)csvBtn.style.display='inline-flex';
+  }catch(e){ cont.innerHTML='<div class="empty" style="color:var(--red)"><i class="ti ti-alert-triangle"></i> Error: '+totalEsc(e.message)+'</div>'; }
+}
+function totalDescargarCSV(){
+  if(!totalUltimo||!totalUltimo.arts.length){ log('Nada que exportar'); return; }
+  const sep=';';
+  const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const num=n=>String(Number(n||0).toFixed(2)).replace('.',',');
+  let csv='TOTAL POR ARTICULO (material por servir)\n';
+  csv+=['Codigo','Descripcion','Unidades','Palets','Mini','Bultos','Dias'].map(q).join(sep)+'\n';
+  totalUltimo.arts.forEach(a=>{ csv+=[q(a.codigo),q(a.desc),num(a.cant),num(a.palet),num(a.mini),num(a.bultos),a.dias.size].join(sep)+'\n'; });
+  csv+='\nPOR DIA\n';
+  csv+=['Dia','Cargas','Palets','Mini','Unidades','Bultos'].map(q).join(sep)+'\n';
+  totalUltimo.dias.forEach(pd=>{ csv+=[q(pd.fecha),pd.ncargas,num(pd.palet),num(pd.mini),num(pd.cant),num(pd.bultos)].join(sep)+'\n'; });
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='Material por servir.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  log('CSV descargado');
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
