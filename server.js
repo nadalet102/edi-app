@@ -402,7 +402,7 @@ app.post('/api/bc/crear-pedido', async (req, res) => {
       lineas
     };
 
-    // Call the Power Automate flow
+    // Call the Power Automate flow (con timeout para no quedarnos colgados → 502 mudo)
     const flowUrl = new URL(FLOW_URL);
     const body = JSON.stringify(payload);
     const result = await new Promise((resolve, reject) => {
@@ -410,11 +410,13 @@ app.post('/api/bc/crear-pedido', async (req, res) => {
         hostname: flowUrl.hostname,
         path: flowUrl.pathname + flowUrl.search,
         method: 'POST',
-        headers: {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+        headers: {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)},
+        timeout: 20000
       }, resp => {
         let d=''; resp.on('data',c=>d+=c);
         resp.on('end',()=>resolve({status:resp.statusCode, body:d}));
       });
+      r.on('timeout', () => r.destroy(new Error('Power Automate no respondió a tiempo (timeout 20s). Comprueba que el flujo esté activo y que su URL (PA_FLOW_URL) sea la correcta.')));
       r.on('error', reject);
       r.write(body); r.end();
     });
