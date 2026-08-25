@@ -154,7 +154,13 @@ async function initDB(){
     )`,
     `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS prep_id INTEGER`,
     `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS num_pedidos INTEGER DEFAULT 0`,
-    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS tiene_albaranes BOOLEAN DEFAULT FALSE`
+    `ALTER TABLE cal_cargas ADD COLUMN IF NOT EXISTS tiene_albaranes BOOLEAN DEFAULT FALSE`,
+    // Duplicados históricos: conservar la primera importación de cada num_pedido
+    // (edi_lineas no se usa desde crear-pedido, no hay hijos que migrar)
+    `DELETE FROM edi_pedidos a USING edi_pedidos b
+       WHERE a.num_pedido = b.num_pedido AND a.id > b.id`,
+    // A partir de aquí la BD no admite dos importaciones del mismo pedido
+    `CREATE UNIQUE INDEX IF NOT EXISTS edi_pedidos_num_pedido_uq ON edi_pedidos(num_pedido)`
   ];
   for(const sql of stmts){
     try { await pool.query(sql); } catch(e) { console.warn('initDB:', e.message); }
@@ -386,6 +392,14 @@ app.post('/api/bc/crear-pedido', async (req, res) => {
   if(!FLOW_URL) return res.status(500).json({error:'PA_FLOW_URL no configurada'});
 
   try {
+    // Validación mínima
+    if(!pedido || !pedido.num_pedido) return res.status(400).json({error:'Falta el pedido o su número'});
+
+    // Anti-duplicado: el servidor es el dueño del estado. Si ya consta importado,
+    // no se reenvía a Power Automate (evita pedidos dobles en BC).
+    const dup = await pool.query('SELECT id FROM edi_pedidos WHERE num_pedido=$1 LIMIT 1',[pedido.num_pedido]);
+    if(dup.rows.length) return res.status(409).json({error:'El pedido '+pedido.num_pedido+' ya fue importado antes', ya_importado:true});
+
     // Build payload for Power Automate — only lines with a BC mapping
     const lineas = pedido.lineas
       .filter(l => l.ref_bc)
