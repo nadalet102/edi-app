@@ -801,7 +801,9 @@ function prepLoadPdfjs(){
 async function prepParsePage(page){
   const tc=await page.getTextContent();
   const items=tc.items.map(it=>({s:it.str,x:Math.round(it.transform[4]),y:Math.round(it.transform[5])})).filter(i=>i.s.trim()!=='');
-  const header=items.find(i=>i.s==='No.');
+  // BC imprime la cabecera de columnas como «No.» (informes antiguos) o «Nº» (nuevos);
+  // «Nº» solo aparece suelto en esa cabecera (los demás vienen pegados: «Nº Pedido», «Nº Cuenta»)
+  const header=items.find(i=>{const t=i.s.trim();return t==='No.'||t==='Nº';});
   const totales=items.find(i=>i.s.startsWith('Totales'));
   if(!header||!totales)return null;
   const region=items.filter(i=>i.y<=header.y-5&&i.y>=totales.y+3);
