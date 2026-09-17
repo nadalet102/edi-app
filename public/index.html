@@ -1096,17 +1096,19 @@ function buildPlanillaPDF(pedidos){
   [['PALETS EUROPEOS',totPal],['BULTOS',nf(totBul)]].forEach((r,i)=>{const yy=y+i*rowH;box(tx,yy,tLbl,rowH,GRAY);box(tx+tLbl,yy,tVal,rowH,WH);T(r[0],tx+1.5,yy+rowH/2,{sz:7,b:true});T(r[1],tx+tLbl+tVal/2,yy+rowH/2,{sz:11,al:'center',b:true});});
   y+=5*rowH+3;
   box(M,y,RW,8,GRAY); T('LISTADO DE PEDIDOS',W/2,y+4,{b:true,sz:13,al:'center'}); y+=8;
-  const body=pedidos.map(o=>[o.docExt||'',o._lm||'',o.tienda||'',nf(o._kg),o._paletsEff||'',o._nbEff?nf(o._nbEff):'',prepAlbaranes[norm(o.docExt)]||'',o.pedido||'']);
+  // Última columna «Nº FACTURA» vacía: se rellena a mano al facturar. Palets y bultos van
+  // estrechos (nunca pasan de 10 por pedido) para dejarle el ancho que sobra.
+  const body=pedidos.map(o=>[o.docExt||'',o._lm||'',o.tienda||'',nf(o._kg),o._paletsEff||'',o._nbEff?nf(o._nbEff):'',prepAlbaranes[norm(o.docExt)]||'',o.pedido||'','']);
   const pesoTot=pedidos.reduce((s,o)=>s+(o._kg||0),0);
   doc.autoTable({
     startY:y,margin:{left:M,right:M},
-    head:[['Nº Pedido','Nº TIENDA','Nombre Tienda','Peso KG','Palet europeo','Bultos','ALB.','PEDIDO ARISAC']],
-    body,foot:[['','','TOTALES',nf(pesoTot),totPal,nf(totBul),'','']],
+    head:[['Nº Pedido','Nº TIENDA','Nombre Tienda','Peso KG','Palet europeo','Bultos','ALB.','PEDIDO ARISAC','Nº FACTURA']],
+    body,foot:[['','','TOTALES',{content:nf(pesoTot),styles:{halign:'right'}},{content:totPal,styles:{halign:'center'}},{content:nf(totBul),styles:{halign:'center'}},'','','']],
     theme:'grid',
-    styles:{font:'helvetica',fontSize:8,cellPadding:1.3,lineColor:[80,80,80],lineWidth:0.1,valign:'middle'},
+    styles:{font:'helvetica',fontSize:8,cellPadding:1.3,lineColor:[80,80,80],lineWidth:0.1,valign:'middle',minCellHeight:7},
     headStyles:{fillColor:GRAY,textColor:[0,0,0],fontStyle:'bold',halign:'center',fontSize:8},
     footStyles:{fillColor:[238,238,238],textColor:[0,0,0],fontStyle:'bold'},
-    columnStyles:{0:{halign:'center'},1:{halign:'center'},2:{halign:'left',cellWidth:42},3:{halign:'right'},4:{halign:'center'},5:{halign:'center'},6:{halign:'center'},7:{halign:'center'}}
+    columnStyles:{0:{halign:'center',cellWidth:17},1:{halign:'center',cellWidth:14},2:{halign:'left',cellWidth:42},3:{halign:'right',cellWidth:15},4:{halign:'center',cellWidth:14},5:{halign:'center',cellWidth:12},6:{halign:'center',cellWidth:20},7:{halign:'center',cellWidth:20},8:{cellWidth:'auto'}}
   });
   let fy=doc.lastAutoTable.finalY+18; if(fy>280)fy=280;
   const sigW=RW/3;
