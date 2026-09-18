@@ -311,6 +311,7 @@ textarea:focus{border-color:var(--blue)}
         <button class="btn btn-outline" id="prep-print-btn" onclick="prepImprimir()" style="display:none"><i class="ti ti-printer"></i> Imprimir hoja</button>
         <button class="btn btn-outline" id="prep-pdf-btn" onclick="prepDescargarPDF()" style="display:none"><i class="ti ti-file-type-pdf"></i> Descargar PDF (planilla)</button>
         <button class="btn btn-outline" id="prep-check-btn" onclick="prepDescargarChecklistPDF()" style="display:none"><i class="ti ti-checkbox"></i> PDF rellenable (hoja)</button>
+        <button class="btn btn-outline" id="prep-asn-btn" onclick="prepDescargarASN()" style="display:none"><i class="ti ti-file-spreadsheet"></i> CSV tránsito LM</button>
         <input type="text" id="prep-save-name" placeholder="Nombre (opcional)" style="padding:6px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;width:150px">
         <button class="btn btn-primary" id="prep-save-btn" onclick="prepGuardar()"><i class="ti ti-device-floppy"></i> Guardar preparación</button>
         <button class="btn btn-outline" id="prep-nueva-btn" onclick="prepNueva()" style="display:none"><i class="ti ti-plus"></i> Nueva</button>
@@ -854,6 +855,7 @@ async function prepCargar(file){
     document.getElementById('prep-print-btn').style.display='inline-flex';
     document.getElementById('prep-pdf-btn').style.display='inline-flex';
     document.getElementById('prep-check-btn').style.display='inline-flex';
+    document.getElementById('prep-asn-btn').style.display='inline-flex';
     prepUpdateSaveUI();
     log(pedidos.length+' pedidos procesados para preparación'+(prepCurrentId?' · se actualizará la preparación rescatada al guardar':''));
   }catch(e){
@@ -1115,6 +1117,41 @@ function buildPlanillaPDF(pedidos){
   ['Cargador','Transportista','Lm Plataforma'].forEach((s,i)=>{const x=M+i*sigW;doc.setDrawColor(120);doc.line(x+6,fy,x+sigW-6,fy);T(s,x+sigW/2,fy+4,{sz:9,al:'center'});});
   return doc;
 }
+// CSV de tránsito para el portal de proveedores de Leroy Merlin (plantilla oficial: UTF-8
+// sin BOM, separador ';', mismas reglas de bultos/palets que la hoja y la planilla).
+function buildAsnCSV(pedidos){
+  const esSaco=l=>l.palet>0||l.mini>0||/(^|\s)sc(\s|$)/i.test(l.descripcion);
+  const bultosDe=l=>{const u=prepConv[l.codigo];return u>0?l.cantidad/u:l.cantidad;};
+  const filas=[]; // una por docExt, en orden de primera aparición
+  const idx={};   // docExt -> índice en filas, para agrupar PV partidos
+  let saltados=0;
+  for(const o of pedidos){
+    const docExt=(o.docExt||'').trim();
+    if(!docExt){ saltados++; continue; }
+    const palets=o.lineas.reduce((s,l)=>s+l.palet,0);
+    const mini=o.lineas.reduce((s,l)=>s+l.mini,0);
+    const nb=o.lineas.filter(l=>!esSaco(l)).reduce((s,l)=>s+bultosDe(l),0);
+    const bultosPalet=nb>=10?1:0;                 // 10+ bultos → se monta 1 palet
+    const nbEff=bultosPalet?0:nb;
+    const kg=o.lineas.reduce((s,l)=>s+l.kgs,0);
+    const eur=palets+bultosPalet;
+    const sem=mini;
+    const bul=palets>=1?0:Math.ceil(nbEff-1e-9);
+    if(idx[docExt]==null){
+      idx[docExt]=filas.length;
+      filas.push({docExt,kg,eur,sem,bul});
+    } else {
+      const f=filas[idx[docExt]];
+      f.kg+=kg; f.eur+=eur; f.sem+=sem; f.bul+=bul;
+    }
+  }
+  const vac=n=>n?String(n):''; // las cantidades a 0 se dejan vacías, no "0"
+  let csv='PEDIDO;PESO;BUL (Bulto estándar);BPE (Bulto pesado);BLA (Bulto largo);CUA (Cuarto palet);SEM (Medio palet);EUR (Palet europeo);AME (Palet americano);240 (Palet doble);270 (Gran palet);OBSERVACION\n';
+  for(const f of filas){
+    csv+=[f.docExt,vac(Math.round(f.kg)),vac(f.bul),'','','',vac(f.sem),vac(f.eur),'','','',''].join(';')+'\n';
+  }
+  return {csv,saltados,nFilas:filas.length};
+}
 async function prepDescargarPDF(){
   if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
   log('Generando PDF...');
@@ -1125,6 +1162,21 @@ async function prepDescargarPDF(){
     doc.save('Planilla preparacion '+prepFechaArchivo()+'.pdf');
     log('PDF descargado');
   }catch(e){ log('Error generando PDF: '+e.message); }
+}
+async function prepDescargarASN(){
+  if(!prepPedidos.length){ log('Primero carga un PDF de preparación'); return; }
+  try{
+    await prepCargarConversiones(); // para tener prepConv cargado, igual que en prepCargar
+    const {csv,saltados,nFilas}=buildAsnCSV(prepPedidos);
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='ASN Leroy Merlin '+prepFechaArchivo()+'.csv'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    let msg='CSV de tránsito descargado · '+nFilas+' pedidos LM';
+    if(saltados) msg+=' · '+saltados+' sin nº de pedido LM (no incluidos)';
+    log(msg);
+  }catch(e){ log('Error generando CSV: '+e.message); }
 }
 
 // ── PDF RELLENABLE = HOJA EXACTA + CASILLAS DE FORMULARIO ─────────────────────
@@ -1256,7 +1308,7 @@ function prepNueva(){
   const ai=document.getElementById('prep-alb-info'); if(ai){ai.textContent='';}
   document.getElementById('prep-print').innerHTML='';
   document.getElementById('prep-info').textContent='';
-  ['prep-print-btn','prep-pdf-btn','prep-check-btn'].forEach(i=>document.getElementById(i).style.display='none');
+  ['prep-print-btn','prep-pdf-btn','prep-check-btn','prep-asn-btn'].forEach(i=>document.getElementById(i).style.display='none');
   prepUpdateSaveUI();
   log('Nueva preparación en blanco');
 }
@@ -1367,12 +1419,14 @@ async function prepRescatar(id){
       document.getElementById('prep-print-btn').style.display='inline-flex';
       document.getElementById('prep-pdf-btn').style.display='inline-flex';
       document.getElementById('prep-check-btn').style.display='inline-flex';
+      document.getElementById('prep-asn-btn').style.display='inline-flex';
     } else {
       prepRenderVacia(f);
       document.getElementById('prep-info').textContent='Guía rescatada · sube el PDF para añadir los pedidos';
       document.getElementById('prep-print-btn').style.display='none';
       document.getElementById('prep-pdf-btn').style.display='none';
       document.getElementById('prep-check-btn').style.display='none';
+      document.getElementById('prep-asn-btn').style.display='none';
     }
     prepUpdateSaveUI();
     const nAlb=Object.keys(prepAlbaranes||{}).length;
